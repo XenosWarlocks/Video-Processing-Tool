@@ -1,2 +1,42 @@
-# Video-Processing-Tool
-The project will be divided into three phases for structured development and feature enhancement.
+
+## Project structure:
+```
+video-processing-tool/
+│
+├── src/
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── base_processor.py        # Base abstract class for processors
+│   │   ├── token_counter.py         # AI Token counter
+│   │   └── config_manager.py        # Centralized configuration management 
+│   │
+│   ├── video_processing/
+│   │   ├── __init__.py
+│   │   ├── video_handler.py         # Enhanced video handling
+│   │   ├── frame_extractor.py       # Advanced frame extraction
+│   │   ├── ocr_processor.py         # Improved OCR processing
+│   │   └── text_analyzer.py         # Text analysis and deduplication
+│   │
+│   ├── ai_integration/
+│   │   ├── __init__.py
+│   │   ├── gemini_processor.py      # Gemini AI integration
+│   │   └── text_enrichment.py       # AI-powered text enhancement
+│   │
+│   └── ui/
+│       ├── __init__.py
+│       └── enhanced_streamlit.py    # Advanced Streamlit UI
+│
+├── tests/
+│   ├── test_video_processing.py
+│   └── test_ai_integration.py
+│
+├── configs/
+│   ├── app_config.yaml
+│   └── ai_config.yaml
+│
+├── logs/
+│   └── app.log
+│
+├── requirements.txt
+└── README.md
+```

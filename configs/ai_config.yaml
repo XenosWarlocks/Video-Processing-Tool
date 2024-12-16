@@ -1,0 +1,19 @@
+```yaml
+# App Configuration
+video_processing:
+  max_file_size: 1073741824  # 1GB in bytes
+  allowed_extensions: 
+    - mp4
+    - avi
+    - mov
+
+frame_extraction:
+  default_interval: 2  # seconds
+  max_interval: 5
+  min_interval: 1
+
+logging:
+  level: INFO
+  max_log_files: 5
+  log_rotation: "10 MB"
+```
