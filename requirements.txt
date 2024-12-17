@@ -34,3 +34,7 @@ pydantic
 tiktoken
 tenacity
 fastapi
+plotly
+
+textstat
+nltk

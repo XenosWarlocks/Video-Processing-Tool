@@ -23,6 +23,7 @@ video-processing-tool/
 │   │   ├── __init__.py
 │   │   ├── vid_api.py
 │   │   ├── chunk_api.py
+│   │
 │   ├── ai_integration/
 │   │   ├── __init__.py
 │   │   ├── gemini_processor.py      # Gemini AI integration
