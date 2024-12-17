@@ -1,4 +1,12 @@
 # proj/src/ui/streamlit.py
+import sys
+import os
+from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+# Add the project root directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 import streamlit as st
 import base64
 from typing import List, Dict, Any
@@ -109,7 +117,7 @@ class EnhancedStreamlitApp:
         Create an interactive and visually appealing sidebar
         """
         with st.sidebar:
-            st.image("C:\Users\\mannu\\Downloads\\JSproj\\megaProj\\vid_pro_tool\\assets\\logo.jpg", width=250)  # Add a logo
+            st.image(r"C:\Users\mannu\Downloads\JSproj\megaProj\vid_pro_tool\assets\logo.jpg", width=250)  # Add a logo
             st.markdown("## 🎥 EduVision Settings")
             
             st.markdown("### Video Processing")
@@ -250,4 +258,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# streamlit run streamlit.py
+# streamlit run src/ui/streamlit.py

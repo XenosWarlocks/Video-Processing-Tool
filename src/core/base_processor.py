@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict
 import yaml
 
-from config_manager import ConfigManager
+from src.core.config_manager import ConfigManager
 
 class BaseProcessor(ABC):
     """

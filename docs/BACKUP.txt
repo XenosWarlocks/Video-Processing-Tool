@@ -1,28 +1,34 @@
 ## Project structure:
-```
+
+```bash
 video-processing-tool/
 │
 ├── src/
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── base_processor.py        # DONE
-│   │   └── config_manager.py        # DONE
+│   │   ├── base_processor.py        # Done
+│   │   ├── token_counter.py         # Done
+│   │   └── config_manager.py        # Done 
 │   │
 │   ├── video_processing/
 │   │   ├── __init__.py
-│   │   ├── video_handler.py         # Enhanced video handling
-│   │   ├── frame_extractor.py       # Advanced frame extraction
+│   │   ├── video_handler.py         # Done
+│   │   ├── frame_extractor.py       # Done
 │   │   ├── ocr_processor.py         # Improved OCR processing
 │   │   └── text_analyzer.py         # Text analysis and deduplication
 │   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── vid_api.py               # Done
+│   │   ├── chunk_api.py             # Done
 │   ├── ai_integration/
 │   │   ├── __init__.py
-│   │   ├── gemini_processor.py      # DONE
-│   │   └── text_enrichment.py       # AI-powered text enhancement
+│   │   ├── gemini_processor.py      # Done
+│   │   └── text_enrichment.py       # Done
 │   │
 │   └── ui/
 │       ├── __init__.py
-│       └── enhanced_streamlit.py    # DONE
+│       └── enhanced_streamlit.py    # Done
 │
 ├── tests/
 │   ├── test_video_processing.py
@@ -39,7 +45,6 @@ video-processing-tool/
 └── README.md
 ```
 # proj/src/core/config_manager.py
-
 import os
 import logging
 from abc import ABC, abstractmethod
@@ -51,19 +56,19 @@ class ConfigManager:
     Centralized configuration management with environment-based loading
     """
     _instance = None
-    
+
     def __new__(cls):
         if not cls._instance:
             cls._instance = super(ConfigManager, cls).__new__(cls)
-            cls._instance._load_configs()
+            cls._instance._load_config()
         return cls._instance
     
     def _load_configs(self):
         """Load configurations from YAML files"""
         self.app_config = self._load_yaml('configs/app_config.yaml')
         self.ai_config = self._load_yaml('configs/ai_config.yaml')
-    
-    def _load_yaml(self, file_path: str) -> Dict[str, Any]:
+
+    def _load_yaml(self, file_path: str) -> Dict[str, any]:
         """
         Load YAML configuration file
         
@@ -82,8 +87,8 @@ class ConfigManager:
         except yaml.YAMLError as e:
             logging.error(f"Error parsing YAML file {file_path}: {e}")
             return {}
-    
-    def get_config(self, config_type: str, key: str, default=None):
+        
+    def get_config(self, config_type: str, key: str, default: None):
         """
         Retrieve a configuration value
         
@@ -99,16 +104,17 @@ class ConfigManager:
             'app': self.app_config,
             'ai': self.ai_config
         }
-        
+
         return config_map.get(config_type, {}).get(key, default)
 
 # proj/src/core/base_processor.py
-
 import os
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 import yaml
+
+from config_manager import ConfigManager
 
 class BaseProcessor(ABC):
     """
@@ -123,7 +129,7 @@ class BaseProcessor(ABC):
         """
         self.config = config_manager
         self.logger = self._setup_logger()
-    
+
     def _setup_logger(self) -> logging.Logger:
         """
         Setup logging for the processor
@@ -158,7 +164,7 @@ class BaseProcessor(ABC):
             Any: Processed output
         """
         pass
-    
+
     def log_error(self, message: str):
         """
         Log error messages
@@ -177,15 +183,73 @@ class BaseProcessor(ABC):
         """
         self.logger.info(message)
 
+# proj/src/core/token_counter.py
+
+import tiktoken
+
+class TokenCounter:
+    """
+    Utility for counting tokens across different models
+    """
+    def __init__(self, encoding_name: str = 'cl100k_base'):
+        """
+        Initialize token counter with a specific encoding
+        
+        Args:
+            encoding_name (str): Name of the encoding to use
+        """
+        self.encoding = tiktoken.get_encoding(encoding_name)
+
+    def count_tokens(self, text: str) -> int:
+        """
+        Count the number of tokens in a given text
+        
+        Args:
+            text (str): Input text to count tokens
+        
+        Returns:
+            int: Number of tokens in the text
+        """
+        return len(self.encoding.encode(text))
+    
+    def estimate_max_tokens(self, max_input_tokens: int = 8192) -> int:
+        """
+        Estimate maximum tokens for processing
+        
+        Args:
+            max_input_tokens (int): Maximum tokens for the model
+        
+        Returns:
+            int: Recommended max tokens for processing
+        """
+        return max_input_tokens // 2  # Reserve tokens for response
+
 # proj/src/ai_integration/gemini_processor.py
 import os
+import re
+from typing import List, Dict, Any, Optional
+
 import google.generativeai as genai
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from src.core.base_processor import BaseProcessor, ConfigManager
-from typing import List, Dict, Any
+from src.core.token_counter import TokenCounter
+
+class TextInsight(BaseModel):
+    """
+    Structured model for text insights
+    """
+    sentiment: str = Field(description="Overall sentiment of the text")
+    keywords: List[str] = Field(description="Top 5 important keywords")
+    summary: str = Field(description="Concise summary of the text")
+    complexity: str = Field(description="Text complexity level")
 
 class GeminiProcessor(BaseProcessor):
     """
-    Processor for Gemini AI integration and text enrichment
+    Enhanced Gemini AI processor with advanced text processing capabilities
     """
     def __init__(self, config_manager: ConfigManager):
         super().__init__(config_manager)
@@ -197,89 +261,550 @@ class GeminiProcessor(BaseProcessor):
         
         genai.configure(api_key=api_key)
         
-        # Initialize Gemini model
+        # Initialize Gemini model and token counter
         self.model = genai.GenerativeModel(
             self.config.get_config('ai', 'model_name', 'gemini-pro')
         )
+        self.token_counter = TokenCounter()
+
+    def _chunk_text(self, text: str, max_tokens: int = 2000) -> List[str]:
+        """
+        Chunk large text into manageable segments
+        
+        Args:
+            text (str): Input text to chunk
+            max_tokens (int): Maximum tokens per chunk
+        
+        Returns:
+            List[str]: List of text chunks
+        """
+        # Basic chunking strategy
+        words = text.split()
+        chunks = []
+        current_chunk = []
+        current_token_count = 0
+
+        for word in words:
+            word_tokens = self.token_counter.count_tokens(word)
+
+            if current_token_count + word_tokens > max_tokens:
+                chunks.append(' '.join(current_chunk))
+                current_chunk = []
+                current_token_count = 0
+
+            current_chunk.append(word)
+            current_token_count += word_tokens
+
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
+
+        return chunks
+    
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    def _process_chunk(self, chunk: str) -> TextInsight:
+        """
+        Process a single text chunk with advanced insights
+        
+        Args:
+            chunk (str): Text chunk to process
+        
+        Returns:
+            TextInsight: Structured insights for the chunk
+        """
+        # Create Pydantic output parser
+        parser = PydanticOutputParser(pydantic_object=TextInsight)
+        
+        # Create a comprehensive prompt template
+        prompt = PromptTemplate(
+            template="""You are an advanced and highly capable AI specializing in comprehensive text analysis. 
+            Your goal is to analyze the following text and provide actionable and thorough insights based on the outlined instructions. 
+
+            **Text Analysis Requirements:**
+            1. **Sentiment Analysis:** 
+                - Determine the overall sentiment (e.g., positive, negative, neutral).
+                - Provide a detailed explanation of the sentiment by identifying specific phrases or words contributing to the tone.
+                - Assign a sentiment weight (on a scale of -1 to +1) to indicate sentiment intensity.
+
+            2. **Keyword Extraction:** 
+                - Identify the most important keywords and phrases in the text. 
+                - Prioritize keywords based on frequency, relevance, and contextual importance. 
+                - Highlight relationships between key phrases, if applicable.
+
+            3. **Concise Summary:** 
+                - Provide a brief, accurate summary of the text (no more than 6-9 sentences). 
+                - Ensure the summary captures the primary ideas and intent of the text.
+
+            4. **Text Complexity Assessment:** 
+                - Evaluate the linguistic complexity of the text based on factors such as vocabulary, sentence structure, and readability. 
+                - Rate the text's complexity on a scale from 1 (simple) to 5 (highly complex). 
+                - Suggest potential audiences who would find this text accessible or challenging.
+
+            5. **Formatting & Structured Output:** 
+                - Present the analysis in a well-organized JSON format, adhering to the format instructions below.
+                - Ensure output consistency and avoid redundancies in your response.
+
+            **Text to Analyze:**
+            {text}
+
+            **Format Instructions:**
+            {format_instructions}
+            """,
+            input_variables=["text"],
+            partial_variables={
+                "format_instructions": parser.get_format_instructions()
+            }
+        )
+
+        # Prepare the prompt
+        formatted_prompt = prompt.format_prompt(text=chunk)
+
+        # Generate response
+        try:
+            response = self.model.generate_content(formatted_prompt.to_string())
+            return parser.parse(response.text)
+        except Exception as e:
+            self.log_error(f"Chunk processing error: {e}")
+            # Return a default insight if processing fails
+            return TextInsight(
+                sentiment="Unknown",
+                keywords=[],
+                summary="Error processing chunk",
+                complexity="N/A"
+            )
     
     def process(self, text_data: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         """
-        Enhance text data using Gemini AI
+        Advanced text processing with chunking and multi-step analysis
         
         Args:
             text_data (List[Dict[str, str]]): List of text entries
         
         Returns:
-            List[Dict[str, Any]]: Enhanced text data with AI insights
+            List[Dict[str, Any]]: Enhanced text data with comprehensive insights
         """
         enhanced_data = []
-        
         for entry in text_data:
             try:
-                # Generate insights using Gemini
-                response = self.model.generate_content(
-                    f"Analyze and extract key insights from this text: {entry['text']}"
-                )
-                
+                # Chunk the text
+                text_chunks = self._chunk_text(entry['text'])
+
+                # Process each chunk
+                chunk_insights = [self._process_chunk(chunk) for chunk in text_chunks]
+
+                # Aggregate insights
                 enhanced_entry = {
                     'original_text': entry['text'],
                     'frame_path': entry.get('frame_path'),
-                    'ai_insights': response.text,
-                    'sentiment': self._analyze_sentiment(entry['text']),
-                    'keywords': self._extract_keywords(entry['text'])
+                    'total_tokens': self.token_counter.count_tokens(entry['text']),
+                    'insights': [
+                        {
+                            'sentiment': insight.sentiment,
+                            'keywords': insight.keywords,
+                            'summary': insight.summary,
+                            'complexity': insight.complexity
+                        } for insight in chunk_insights
+                    ]
                 }
-                
                 enhanced_data.append(enhanced_entry)
-                
+            
             except Exception as e:
-                self.log_error(f"Error processing text with Gemini AI: {e}")
+                self.log_error(f"Error processing entry: {e}")
+                enhanced_data.append({
+                    'original_text': entry['text'],
+                    'frame_path': entry.get('frame_path'),
+                    'total_tokens': self.token_counter.count_tokens(entry['text']),
+                    'insights': [],
+                    'error': str(e)
+                })
         
         return enhanced_data
     
-    def _analyze_sentiment(self, text: str) -> str:
+    def _normalize_text(self, text: str) -> str:
         """
-        Perform sentiment analysis using Gemini
+        Normalize text by removing extra whitespaces and cleaning
         
         Args:
             text (str): Input text
         
         Returns:
-            str: Sentiment classification
+            str: Cleaned and normalized text
         """
-        try:
-            response = self.model.generate_content(
-                f"Classify the sentiment of this text as Positive, Neutral, or Negative: {text}"
-            )
-            return response.text.strip()
-        except Exception as e:
-            self.log_error(f"Sentiment analysis error: {e}")
-            return "Unknown"
+        # Remove extra whitespaces
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Remove special characters if needed
+        text = re.sub(r'[^\w\s.,!?]', '', text)
+        
+        return text
+
+# proj/src/api/vid_api.py
+
+import json
+import os
+import uuid
+import aiofiles
+from fastapi import (
+    FastAPI, 
+    File, 
+    UploadFile, 
+    HTTPException, 
+    BackgroundTasks
+)
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
+
+from src.video_processing.video_handler import VideoProcessor
+from src.ai_integration.gemini_processor import GeminiProcessor
+from src.core.config_manager import ConfigManager
+
+class ChunkedUploadResponse(BaseModel):
+    upload_id: str
+    status: str
+    total_chunks_expected: int
+
+class VideoProcessingRequest(BaseModel):
+    upload_id: str
+    processing_options: Optional[List[str]] = None
+
+class VideoProcessingAPI:
+    def __init__(self):
+        self.config_manager = ConfigManager()
+        self.video_processor = VideoProcessor(self.config_manager)
+        self.ai_processor = GeminiProcessor(self.config_manager)
+        
+        # Create upload and temp directories
+        os.makedirs('uploads/chunks', exist_ok=True)
+        os.makedirs('uploads/videos', exist_ok=True)
+        os.makedirs('uploads/processed', exist_ok=True)
     
-    def _extract_keywords(self, text: str) -> List[str]:
+    async def handle_chunked_upload(
+        self, 
+        file: UploadFile, 
+        chunk_number: int, 
+        total_chunks: int, 
+        upload_id: str
+    ):
         """
-        Extract key keywords from text
+        Handle chunked video file upload
         
         Args:
-            text (str): Input text
+            file (UploadFile): Uploaded file chunk
+            chunk_number (int): Current chunk number
+            total_chunks (int): Total number of chunks
+            upload_id (str): Unique upload identifier
+        """
+        chunk_dir = os.path.join('uploads/chunks', upload_id)
+        os.makedirs(chunk_dir, exist_ok=True)
+        
+        chunk_path = os.path.join(chunk_dir, f'chunk_{chunk_number:04d}')
+        
+        async with aiofiles.open(chunk_path, 'wb') as chunk_file:
+            content = await file.read()
+            await chunk_file.write(content)
+    
+    def assemble_video_from_chunks(self, upload_id: str) -> str:
+        """
+        Assemble video from uploaded chunks
+        
+        Args:
+            upload_id (str): Unique upload identifier
         
         Returns:
-            List[str]: List of extracted keywords
+            str: Path to the assembled video file
+        """
+        chunk_dir = os.path.join('uploads/chunks', upload_id)
+        video_path = os.path.join('uploads/videos', f'{upload_id}.mp4')
+        
+        # Sort chunks and concatenate
+        chunks = sorted(
+            [f for f in os.listdir(chunk_dir) if f.startswith('chunk_')], 
+            key=lambda x: int(x.split('_')[1])
+        )
+        
+        with open(video_path, 'wb') as outfile:
+            for chunk_name in chunks:
+                chunk_path = os.path.join(chunk_dir, chunk_name)
+                with open(chunk_path, 'rb') as chunk_file:
+                    outfile.write(chunk_file.read())
+        
+        return video_path
+    
+    async def process_video_background(
+        self, 
+        video_path: str, 
+        processing_options: Optional[List[str]] = None
+    ):
+        """
+        Background task for video processing
+        
+        Args:
+            video_path (str): Path to the video file
+            processing_options (List[str], optional): Processing configurations
         """
         try:
-            response = self.model.generate_content(
-                f"Extract 5 most important keywords from this text: {text}"
+            # Process video
+            processed_frames = self.video_processor.process_video(
+                video_path, 
+                interval=2  # Default 2-second interval
             )
-            return response.text.strip().split('\n')
+            
+            # Optional AI processing
+            if processing_options and 'ai_insights' in processing_options:
+                ai_results = self.ai_processor.process(processed_frames)
+                
+                # Save results to a file or database
+                self._save_processing_results(video_path, ai_results)
+        
         except Exception as e:
-            self.log_error(f"Keyword extraction error: {e}")
-            return []
+            # Log processing errors
+            print(f"Video processing error: {e}")
+    
+    def _save_processing_results(self, video_path: str, results: List[dict]):
+        """
+        Save processing results
+        
+        Args:
+            video_path (str): Original video path
+            results (List[dict]): Processing results
+        """
+        # Create a unique filename for results
+        result_filename = os.path.join(
+            'uploads/processed', 
+            f'{os.path.basename(video_path)}_results.json'
+        )
+        
+        # Save results as JSON
+        with open(result_filename, 'w') as f:
+            json.dump(results, f, indent=2)
+
+def create_app() -> FastAPI:
+    """
+    Create FastAPI application
+    
+    Returns:
+        FastAPI: Configured FastAPI application
+    """
+    app = FastAPI(
+        title="Educational Video Processing API",
+        description="Robust video processing API with chunked uploads and AI insights"
+    )
+    video_api = VideoProcessingAPI()
+
+    @app.post("/upload/chunked")
+    async def upload_chunked_video(
+        file: UploadFile = File(...),
+        chunk_number: int = 1,
+        total_chunks: int = 1,
+        upload_id: Optional[str] = None
+    ):
+        """
+        Handle chunked video file upload
+        
+        Args:
+            file (UploadFile): Uploaded file chunk
+            chunk_number (int): Current chunk number
+            total_chunks (int): Total number of chunks
+            upload_id (str, optional): Unique upload identifier
+        
+        Returns:
+            ChunkedUploadResponse: Upload status response
+        """
+        if not upload_id:
+            upload_id = str(uuid.uuid4())
+        
+        try:
+            await video_api.handle_chunked_upload(
+                file, chunk_number, total_chunks, upload_id
+            )
+            
+            # If last chunk, assemble video
+            if chunk_number == total_chunks:
+                video_path = video_api.assemble_video_from_chunks(upload_id)
+                return ChunkedUploadResponse(
+                    upload_id=upload_id,
+                    status='completed',
+                    total_chunks_expected=total_chunks
+                )
+            
+            return ChunkedUploadResponse(
+                upload_id=upload_id,
+                status='partial',
+                total_chunks_expected=total_chunks
+            )
+        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/process")
+    async def process_video(
+        request: VideoProcessingRequest,
+        background_tasks: BackgroundTasks
+    ):
+        """
+        Start video processing
+        
+        Args:
+            request (VideoProcessingRequest): Processing request
+            background_tasks (BackgroundTasks): FastAPI background tasks
+        
+        Returns:
+            JSONResponse: Processing initiation response
+        """
+        try:
+            # Locate video path
+            chunk_dir = os.path.join('uploads/chunks', request.upload_id)
+            video_path = video_api.assemble_video_from_chunks(request.upload_id)
+            
+            # Start background processing
+            background_tasks.add_task(
+                video_api.process_video_background, 
+                video_path, 
+                request.processing_options
+            )
+            
+            return JSONResponse({
+                'status': 'processing_started',
+                'upload_id': request.upload_id
+            })
+        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return app
+
+app = create_app()
+
+# proj/src/api/vid_api.py
+
+import uuid
+import requests
+import os
+from typing import Optional
+
+class VideoChunkUploader:
+    def __init__(self, api_url: str = "http://localhost:8000"):
+        """
+        Initialize video chunk uploader
+        
+        Args:
+            api_url (str): Base URL of the video processing API
+        """
+        self.api_url = api_url
+
+    def upload_video_in_chunks(
+        self,
+        file_path: str,
+        chunk_size: int = 10 * 1024 * 1024,  # 10 MB chunks
+        upload_id: Optional[str] = None
+    ) -> str:
+        """
+        Upload a video file in chunks
+        
+        Args:
+            file_path (str): Path to the video file
+            chunk_size (int): Size of each chunk
+            upload_id (str, optional): Predefined upload ID
+        
+        Returns:
+            str: Upload ID for tracking
+        """
+        # Get file size and calculate total chunks
+        file_size = os.path.getsize(file_path)
+        total_chunks = (file_size + chunk_size - 1) // chunk_size
+
+        # Generate upload ID if not provided
+        upload_id = upload_id or str(uuid.uuid4())
+        
+        # Chunk and upload
+        with open(file_path, 'rb') as file:
+            for chunk_number in range(1, total_chunks + 1):
+                chunk = file.read(chunk_size)
+                
+                # Prepare multipart form data
+                files = {
+                    'file': (
+                        os.path.basename(file_path),
+                        chunk,
+                        'application/octet-stream'
+                    )
+                }
+
+                # Upload chunk
+                response = requests.post(
+                    f"{self.api_url}/upload_chunked",
+                    files=files,
+                    data={
+                        'chunk_number': chunk_number,
+                        'total_chunks': total_chunks,
+                        'upload_id': upload_id
+                    }
+                )
+
+                # Check response
+                if response.status_code not in [200, 201]:
+                    raise Exception(f"Chunk upload failed: {response.text}")
+                
+        return upload_id
+    
+    def start_video_processing(
+        self,
+        upload_id: str,
+        processing_options: Optional[list] = None
+    ) -> dict:
+        """
+        Start video processing
+
+        Args:
+            upload_id (str): Unique upload identifier
+            processing_options (list, optional): Processing configurations
+
+        Returns:
+            dict: Processing initiation response
+        """
+        # Prepare request payload
+        response = requests.post(
+            f"{self.api_url}/process",
+            json={
+                'upload_id': upload_id,
+                'processing_options': processing_options or ['ai_insights']
+            }
+        )
+
+        return response.json()
+    
+# Example usage
+def main():
+    uploader = VideoChunkUploader()
+    
+    try:
+        # Upload video in chunks
+        upload_id = uploader.upload_video_in_chunks('path/to/large/video.mp4')
+        
+        # Start processing
+        processing_response = uploader.start_video_processing(
+            upload_id, 
+            processing_options=['ai_insights', 'sentiment_analysis']
+        )
+        
+        print(f"Processing started: {processing_response}")
+    
+    except Exception as e:
+        print(f"Upload/Processing error: {e}")
+
+if __name__ == "__main__":
+    main()
 
 # proj/src/ui/enhanced_streamlit.py
+# proj/src/ui/streamlit.py
 import streamlit as st
 import base64
 from typing import List, Dict, Any
 import plotly.express as px
+import plotly.graph_objs as go
 import pandas as pd
+import numpy as np
+from datetime import datetime
 
 from src.core.config_manager import ConfigManager
 from src.video_processing.video_handler import VideoProcessor
@@ -288,135 +813,230 @@ from src.ai_integration.gemini_processor import GeminiProcessor
 class EnhancedStreamlitApp:
     def __init__(self):
         """
-        Initialize Streamlit application with advanced features
+        Initialize Streamlit application with advanced features and design
         """
         self.config_manager = ConfigManager()
         self.video_processor = VideoProcessor(self.config_manager)
         self.ai_processor = GeminiProcessor(self.config_manager)
         
         self._setup_page_config()
+        self._apply_custom_styling()
     
     def _setup_page_config(self):
         """
-        Configure Streamlit page layout and styling
+        Configure Streamlit page layout and advanced styling
         """
         st.set_page_config(
-            page_title="Educational Video Analysis Tool",
-            page_icon=":film:",
+            page_title="🎬 EduVision: AI Video Insights",
+            page_icon="🤖",
             layout="wide",
             initial_sidebar_state="expanded"
         )
-        
-        # Custom CSS for enhanced styling
+    
+    def _apply_custom_styling(self):
+        """
+        Apply advanced custom CSS for a more modern and appealing design
+        """
         st.markdown("""
         <style>
+            /* Global Background */
             .reportview-container {
-                background: linear-gradient(135deg, #f6f8f9 0%, #e5ebee 100%);
+                background: linear-gradient(135deg, #f4f4f4, #e8e8e8);
+                font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
             }
-            .sidebar .sidebar-content {
-                background: rgba(255, 255, 255, 0.8);
-                backdrop-filter: blur(10px);
-            }
-            .stButton>button {
-                background-color: #4CAF50;
-                color: white;
+            
+            /* Card-like Containers */
+            .stCard {
+                background-color: white;
+                border-radius: 12px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                padding: 20px;
                 transition: all 0.3s ease;
             }
+            
+            /* Sidebar Enhancements */
+            .css-1aumxhk {
+                background: linear-gradient(160deg, #ffffff, #f0f0f0);
+                border-right: 1px solid #e0e0e0;
+            }
+            
+            /* Button Styling */
+            .stButton>button {
+                background-color: #3498db;
+                color: white;
+                border-radius: 8px;
+                border: none;
+                padding: 10px 20px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+                text-transform: uppercase;
+            }
+            
             .stButton>button:hover {
-                background-color: #45a049;
-                transform: scale(1.05);
+                background-color: #2980b9;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            }
+            
+            /* File Uploader */
+            .stFileUploader {
+                background-color: #f8f9fa;
+                border: 2px dashed #3498db;
+                border-radius: 12px;
+                padding: 20px;
+                text-align: center;
+            }
+            
+            /* Expanders */
+            .streamlit-expanderHeader {
+                background-color: #f1f3f4;
+                border-radius: 8px;
+                font-weight: 600;
+            }
+            
+            /* Typography */
+            h1, h2, h3 {
+                color: #2c3e50;
+                font-weight: 700;
             }
         </style>
         """, unsafe_allow_html=True)
     
     def render_sidebar(self):
         """
-        Create advanced sidebar with configuration options
+        Create an interactive and visually appealing sidebar
         """
         with st.sidebar:
-            st.header("🎥 Video Processing Settings")
+            st.image("C:\Users\\mannu\\Downloads\\JSproj\\megaProj\\vid_pro_tool\\assets\\logo.jpg", width=250)  # Add a logo
+            st.markdown("## 🎥 EduVision Settings")
             
-            # Frame sampling configuration
+            st.markdown("### Video Processing")
             self.sampling_interval = st.slider(
-                "Frame Sampling Interval (seconds)", 
+                "Frame Sampling Interval", 
                 min_value=1, 
                 max_value=5, 
-                value=2
+                value=2,
+                help="Select how frequently frames are captured"
             )
             
-            # AI processing options
-            st.subheader("AI Enhancement")
-            self.ai_insights = st.checkbox("Enable AI Insights", value=True)
-            self.sentiment_analysis = st.checkbox("Sentiment Analysis", value=True)
+            st.markdown("### AI Enhancements")
+            col1, col2 = st.columns(2)
+            with col1:
+                self.ai_insights = st.toggle("AI Insights", value=True)
+            with col2:
+                self.sentiment_analysis = st.toggle("Sentiment", value=True)
+            
+            # Advanced Configuration Section
+            with st.expander("🔧 Advanced Options"):
+                self.detail_level = st.select_slider(
+                    "Detail Extraction Level",
+                    options=["Low", "Medium", "High", "Ultra"],
+                    value="Medium"
+                )
+                st.caption("Higher levels provide more comprehensive analysis")
     
     def process_video(self, uploaded_file):
         """
-        Process uploaded video with advanced pipeline
-        
-        Args:
-            uploaded_file: Streamlit uploaded file
-        
-        Returns:
-            Dict[str, Any]: Processed video results
+        Advanced video processing with richer metadata
         """
-        # Video processing
+        start_time = datetime.now()
+        
+        # Enhanced video processing
         processed_frames = self.video_processor.process_video(
             uploaded_file, 
-            interval=self.sampling_interval
+            interval=self.sampling_interval,
+            detail_level=self.detail_level
         )
         
         # Optional AI processing
         if self.ai_insights:
-            ai_enhanced_data = self.ai_processor.process(processed_frames)
+            ai_enhanced_data = self.ai_processor.process(
+                processed_frames, 
+                sentiment_analysis=self.sentiment_analysis
+            )
+            
+            # Performance tracking
+            end_time = datetime.now()
+            ai_enhanced_data['processing_time'] = (end_time - start_time).total_seconds()
+            
             return ai_enhanced_data
         
         return processed_frames
     
     def render_results(self, results: List[Dict[str, Any]]):
         """
-        Create interactive results dashboard
-        
-        Args:
-            results (List[Dict[str, Any]]): Processed video results
+        Create a comprehensive, visually rich results dashboard
         """
+        # Performance and Overview Section
+        st.markdown("## 📊 Analysis Dashboard")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🕒 Processing Time", f"{results.get('processing_time', 0):.2f} sec")
+        with col2:
+            st.metric("🖼️ Frames Analyzed", len(results.get('frames', [])))
+        with col3:
+            st.metric("📈 Complexity", results.get('detail_level', 'Medium'))
+        
         # Sentiment Distribution
         if self.sentiment_analysis:
-            sentiments = [r.get('sentiment', 'Unknown') for r in results]
-            sentiment_df = pd.DataFrame({'sentiment': sentiments})
+            sentiments = results.get('sentiment_distribution', {})
             
-            st.subheader("📊 Sentiment Distribution")
-            fig = px.pie(sentiment_df, names='sentiment', title='Video Content Sentiment')
-            st.plotly_chart(fig)
+            st.markdown("### 😊 Sentiment Analysis")
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                fig_sentiment = px.pie(
+                    values=list(sentiments.values()), 
+                    names=list(sentiments.keys()),
+                    title="Video Content Sentiment Breakdown",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                st.plotly_chart(fig_sentiment, use_container_width=True)
+            
+            with col2:
+                for sentiment, value in sentiments.items():
+                    st.metric(sentiment, f"{value:.1%}")
         
-        # Keyword Insights
-        st.subheader("🔍 Key Insights")
-        for result in results[:5]:  # Display first 5 results
-            with st.expander(f"Frame Insights"):
-                st.write("**Original Text:**", result.get('original_text', 'N/A'))
-                st.write("**AI Insights:**", result.get('ai_insights', 'N/A'))
-                
-                if self.sentiment_analysis:
-                    st.write("**Sentiment:**", result.get('sentiment', 'N/A'))
-                
-                st.image(result.get('frame_path'), width=300)
+        # Key Frame Insights
+        st.markdown("### 🔍 Frame Insights")
+        
+        # Scrollable frame gallery
+        frame_container = st.container()
+        with frame_container:
+            cols = st.columns(5)
+            for i, frame in enumerate(results.get('frames', [])[:5]):
+                with cols[i]:
+                    with st.expander(f"Frame {i+1}"):
+                        st.image(frame['frame_path'], use_column_width=True)
+                        st.write(f"**Insight:** {frame.get('ai_insights', 'N/A')}")
+                        st.write(f"**Sentiment:** {frame.get('sentiment', 'Neutral')}")
+        
+        # Optional Detailed Breakdown
+        if self.detail_level in ['High', 'Ultra']:
+            with st.expander("📜 Comprehensive Analysis"):
+                st.json(results)
     
     def run(self):
         """
-        Main application runner
+        Main application runner with enhanced UI
         """
-        st.title("🎬 Educational Video Analysis Tool")
+        st.title("🤖 EduVision: AI-Powered Video Analysis")
+        st.markdown("Unlock deep insights from your educational videos with advanced AI technology.")
         
         # Sidebar configuration
         self.render_sidebar()
         
-        # File uploader
+        # Stylized file uploader
+        st.markdown("### 📤 Upload Your Video")
         uploaded_file = st.file_uploader(
-            "Upload Educational Video", 
-            type=['mp4', 'avi', 'mov']
+            "Drag and drop or click to select", 
+            type=['mp4', 'avi', 'mov'],
+            help="Support for MP4, AVI, and MOV formats"
         )
         
         if uploaded_file is not None:
-            with st.spinner("Processing Video..."):
+            with st.spinner("🧠 AI is analyzing your video..."):
                 results = self.process_video(uploaded_file)
             
             self.render_results(results)
@@ -427,6 +1047,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# streamlit run streamlit.py
 
 # proj/config/ai_config.yaml
 ```yaml

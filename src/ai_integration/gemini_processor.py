@@ -1,5 +1,13 @@
 import os
 import re
+
+import sys
+from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+# Add the project root directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 from typing import List, Dict, Any, Optional
 
 import google.generativeai as genai

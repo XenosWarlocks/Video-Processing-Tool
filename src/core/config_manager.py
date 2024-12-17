@@ -18,7 +18,7 @@ class ConfigManager:
             cls._instance._load_config()
         return cls._instance
     
-    def _load_configs(self):
+    def _load_config(self):
         """Load configurations from YAML files"""
         self.app_config = self._load_yaml('configs/app_config.yaml')
         self.ai_config = self._load_yaml('configs/ai_config.yaml')

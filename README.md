@@ -31,7 +31,7 @@ video-processing-tool/
 │   │
 │   └── ui/
 │       ├── __init__.py
-│       └── enhanced_streamlit.py    # Advanced Streamlit UI
+│       └── streamlit.py             # Advanced Streamlit UI
 │
 ├── tests/
 │   ├── test_video_processing.py
