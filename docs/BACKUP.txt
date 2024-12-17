@@ -1,0 +1,450 @@
+## Project structure:
+```
+video-processing-tool/
+│
+├── src/
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── base_processor.py        # DONE
+│   │   └── config_manager.py        # DONE
+│   │
+│   ├── video_processing/
+│   │   ├── __init__.py
+│   │   ├── video_handler.py         # Enhanced video handling
+│   │   ├── frame_extractor.py       # Advanced frame extraction
+│   │   ├── ocr_processor.py         # Improved OCR processing
+│   │   └── text_analyzer.py         # Text analysis and deduplication
+│   │
+│   ├── ai_integration/
+│   │   ├── __init__.py
+│   │   ├── gemini_processor.py      # DONE
+│   │   └── text_enrichment.py       # AI-powered text enhancement
+│   │
+│   └── ui/
+│       ├── __init__.py
+│       └── enhanced_streamlit.py    # DONE
+│
+├── tests/
+│   ├── test_video_processing.py
+│   └── test_ai_integration.py
+│
+├── configs/
+│   ├── app_config.yaml
+│   └── ai_config.yaml
+│
+├── logs/
+│   └── app.log
+│
+├── requirements.txt
+└── README.md
+```
+# proj/src/core/config_manager.py
+
+import os
+import logging
+from abc import ABC, abstractmethod
+from typing import Any, Dict
+import yaml
+
+class ConfigManager:
+    """
+    Centralized configuration management with environment-based loading
+    """
+    _instance = None
+    
+    def __new__(cls):
+        if not cls._instance:
+            cls._instance = super(ConfigManager, cls).__new__(cls)
+            cls._instance._load_configs()
+        return cls._instance
+    
+    def _load_configs(self):
+        """Load configurations from YAML files"""
+        self.app_config = self._load_yaml('configs/app_config.yaml')
+        self.ai_config = self._load_yaml('configs/ai_config.yaml')
+    
+    def _load_yaml(self, file_path: str) -> Dict[str, Any]:
+        """
+        Load YAML configuration file
+        
+        Args:
+            file_path (str): Path to the YAML configuration file
+        
+        Returns:
+            Dict[str, Any]: Loaded configuration dictionary
+        """
+        try:
+            with open(file_path, 'r') as file:
+                return yaml.safe_load(file)
+        except FileNotFoundError:
+            logging.error(f"Configuration file not found: {file_path}")
+            return {}
+        except yaml.YAMLError as e:
+            logging.error(f"Error parsing YAML file {file_path}: {e}")
+            return {}
+    
+    def get_config(self, config_type: str, key: str, default=None):
+        """
+        Retrieve a configuration value
+        
+        Args:
+            config_type (str): Type of configuration ('app' or 'ai')
+            key (str): Configuration key
+            default (Any, optional): Default value if key not found
+        
+        Returns:
+            Any: Configuration value
+        """
+        config_map = {
+            'app': self.app_config,
+            'ai': self.ai_config
+        }
+        
+        return config_map.get(config_type, {}).get(key, default)
+
+# proj/src/core/base_processor.py
+
+import os
+import logging
+from abc import ABC, abstractmethod
+from typing import Any, Dict
+import yaml
+
+class BaseProcessor(ABC):
+    """
+    Abstract base class for all processors in the video processing pipeline
+    """
+    def __init__(self, config_manager: ConfigManager):
+        """
+        Initialize processor with configuration management
+        
+        Args:
+            config_manager (ConfigManager): Centralized configuration manager
+        """
+        self.config = config_manager
+        self.logger = self._setup_logger()
+    
+    def _setup_logger(self) -> logging.Logger:
+        """
+        Setup logging for the processor
+        
+        Returns:
+            logging.Logger: Configured logger instance
+        """
+        logger = logging.getLogger(self.__class__.__name__)
+        logger.setLevel(logging.INFO)
+        
+        # Create logs directory if it doesn't exist
+        os.makedirs('logs', exist_ok=True)
+        
+        # File handler
+        file_handler = logging.FileHandler(f'logs/{self.__class__.__name__}.log')
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        
+        logger.addHandler(file_handler)
+        return logger
+    
+    @abstractmethod
+    def process(self, input_data: Any) -> Any:
+        """
+        Abstract method to be implemented by child classes
+        
+        Args:
+            input_data (Any): Input data to be processed
+        
+        Returns:
+            Any: Processed output
+        """
+        pass
+    
+    def log_error(self, message: str):
+        """
+        Log error messages
+        
+        Args:
+            message (str): Error message to log
+        """
+        self.logger.error(message)
+    
+    def log_info(self, message: str):
+        """
+        Log informational messages
+        
+        Args:
+            message (str): Information message to log
+        """
+        self.logger.info(message)
+
+# proj/src/ai_integration/gemini_processor.py
+import os
+import google.generativeai as genai
+from src.core.base_processor import BaseProcessor, ConfigManager
+from typing import List, Dict, Any
+
+class GeminiProcessor(BaseProcessor):
+    """
+    Processor for Gemini AI integration and text enrichment
+    """
+    def __init__(self, config_manager: ConfigManager):
+        super().__init__(config_manager)
+        
+        # Configure Gemini API
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY environment variable not set")
+        
+        genai.configure(api_key=api_key)
+        
+        # Initialize Gemini model
+        self.model = genai.GenerativeModel(
+            self.config.get_config('ai', 'model_name', 'gemini-pro')
+        )
+    
+    def process(self, text_data: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        """
+        Enhance text data using Gemini AI
+        
+        Args:
+            text_data (List[Dict[str, str]]): List of text entries
+        
+        Returns:
+            List[Dict[str, Any]]: Enhanced text data with AI insights
+        """
+        enhanced_data = []
+        
+        for entry in text_data:
+            try:
+                # Generate insights using Gemini
+                response = self.model.generate_content(
+                    f"Analyze and extract key insights from this text: {entry['text']}"
+                )
+                
+                enhanced_entry = {
+                    'original_text': entry['text'],
+                    'frame_path': entry.get('frame_path'),
+                    'ai_insights': response.text,
+                    'sentiment': self._analyze_sentiment(entry['text']),
+                    'keywords': self._extract_keywords(entry['text'])
+                }
+                
+                enhanced_data.append(enhanced_entry)
+                
+            except Exception as e:
+                self.log_error(f"Error processing text with Gemini AI: {e}")
+        
+        return enhanced_data
+    
+    def _analyze_sentiment(self, text: str) -> str:
+        """
+        Perform sentiment analysis using Gemini
+        
+        Args:
+            text (str): Input text
+        
+        Returns:
+            str: Sentiment classification
+        """
+        try:
+            response = self.model.generate_content(
+                f"Classify the sentiment of this text as Positive, Neutral, or Negative: {text}"
+            )
+            return response.text.strip()
+        except Exception as e:
+            self.log_error(f"Sentiment analysis error: {e}")
+            return "Unknown"
+    
+    def _extract_keywords(self, text: str) -> List[str]:
+        """
+        Extract key keywords from text
+        
+        Args:
+            text (str): Input text
+        
+        Returns:
+            List[str]: List of extracted keywords
+        """
+        try:
+            response = self.model.generate_content(
+                f"Extract 5 most important keywords from this text: {text}"
+            )
+            return response.text.strip().split('\n')
+        except Exception as e:
+            self.log_error(f"Keyword extraction error: {e}")
+            return []
+
+# proj/src/ui/enhanced_streamlit.py
+import streamlit as st
+import base64
+from typing import List, Dict, Any
+import plotly.express as px
+import pandas as pd
+
+from src.core.config_manager import ConfigManager
+from src.video_processing.video_handler import VideoProcessor
+from src.ai_integration.gemini_processor import GeminiProcessor
+
+class EnhancedStreamlitApp:
+    def __init__(self):
+        """
+        Initialize Streamlit application with advanced features
+        """
+        self.config_manager = ConfigManager()
+        self.video_processor = VideoProcessor(self.config_manager)
+        self.ai_processor = GeminiProcessor(self.config_manager)
+        
+        self._setup_page_config()
+    
+    def _setup_page_config(self):
+        """
+        Configure Streamlit page layout and styling
+        """
+        st.set_page_config(
+            page_title="Educational Video Analysis Tool",
+            page_icon=":film:",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+        
+        # Custom CSS for enhanced styling
+        st.markdown("""
+        <style>
+            .reportview-container {
+                background: linear-gradient(135deg, #f6f8f9 0%, #e5ebee 100%);
+            }
+            .sidebar .sidebar-content {
+                background: rgba(255, 255, 255, 0.8);
+                backdrop-filter: blur(10px);
+            }
+            .stButton>button {
+                background-color: #4CAF50;
+                color: white;
+                transition: all 0.3s ease;
+            }
+            .stButton>button:hover {
+                background-color: #45a049;
+                transform: scale(1.05);
+            }
+        </style>
+        """, unsafe_allow_html=True)
+    
+    def render_sidebar(self):
+        """
+        Create advanced sidebar with configuration options
+        """
+        with st.sidebar:
+            st.header("🎥 Video Processing Settings")
+            
+            # Frame sampling configuration
+            self.sampling_interval = st.slider(
+                "Frame Sampling Interval (seconds)", 
+                min_value=1, 
+                max_value=5, 
+                value=2
+            )
+            
+            # AI processing options
+            st.subheader("AI Enhancement")
+            self.ai_insights = st.checkbox("Enable AI Insights", value=True)
+            self.sentiment_analysis = st.checkbox("Sentiment Analysis", value=True)
+    
+    def process_video(self, uploaded_file):
+        """
+        Process uploaded video with advanced pipeline
+        
+        Args:
+            uploaded_file: Streamlit uploaded file
+        
+        Returns:
+            Dict[str, Any]: Processed video results
+        """
+        # Video processing
+        processed_frames = self.video_processor.process_video(
+            uploaded_file, 
+            interval=self.sampling_interval
+        )
+        
+        # Optional AI processing
+        if self.ai_insights:
+            ai_enhanced_data = self.ai_processor.process(processed_frames)
+            return ai_enhanced_data
+        
+        return processed_frames
+    
+    def render_results(self, results: List[Dict[str, Any]]):
+        """
+        Create interactive results dashboard
+        
+        Args:
+            results (List[Dict[str, Any]]): Processed video results
+        """
+        # Sentiment Distribution
+        if self.sentiment_analysis:
+            sentiments = [r.get('sentiment', 'Unknown') for r in results]
+            sentiment_df = pd.DataFrame({'sentiment': sentiments})
+            
+            st.subheader("📊 Sentiment Distribution")
+            fig = px.pie(sentiment_df, names='sentiment', title='Video Content Sentiment')
+            st.plotly_chart(fig)
+        
+        # Keyword Insights
+        st.subheader("🔍 Key Insights")
+        for result in results[:5]:  # Display first 5 results
+            with st.expander(f"Frame Insights"):
+                st.write("**Original Text:**", result.get('original_text', 'N/A'))
+                st.write("**AI Insights:**", result.get('ai_insights', 'N/A'))
+                
+                if self.sentiment_analysis:
+                    st.write("**Sentiment:**", result.get('sentiment', 'N/A'))
+                
+                st.image(result.get('frame_path'), width=300)
+    
+    def run(self):
+        """
+        Main application runner
+        """
+        st.title("🎬 Educational Video Analysis Tool")
+        
+        # Sidebar configuration
+        self.render_sidebar()
+        
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "Upload Educational Video", 
+            type=['mp4', 'avi', 'mov']
+        )
+        
+        if uploaded_file is not None:
+            with st.spinner("Processing Video..."):
+                results = self.process_video(uploaded_file)
+            
+            self.render_results(results)
+
+def main():
+    app = EnhancedStreamlitApp()
+    app.run()
+
+if __name__ == "__main__":
+    main()
+
+# proj/config/ai_config.yaml
+```yaml
+# App Configuration
+video_processing:
+  max_file_size: 1073741824  # 1GB in bytes
+  allowed_extensions: 
+    - mp4
+    - avi
+    - mov
+
+frame_extraction:
+  default_interval: 2  # seconds
+  max_interval: 5
+  min_interval: 1
+
+logging:
+  level: INFO
+  max_log_files: 5
+  log_rotation: "10 MB"
+```

@@ -1,6 +1,8 @@
+# Something is here
 
-## Project structure:
-```
+## Project structure
+
+```bash
 video-processing-tool/
 │
 ├── src/
@@ -17,6 +19,10 @@ video-processing-tool/
 │   │   ├── ocr_processor.py         # Improved OCR processing
 │   │   └── text_analyzer.py         # Text analysis and deduplication
 │   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── vid_api.py
+│   │   ├── chunk_api.py
 │   ├── ai_integration/
 │   │   ├── __init__.py
 │   │   ├── gemini_processor.py      # Gemini AI integration
