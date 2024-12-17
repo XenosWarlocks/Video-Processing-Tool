@@ -258,4 +258,7 @@ def main():
 if __name__ == "__main__":
     main()
 
+# From project root
+# uvicorn src.api.vid_api:app --reload
+# From project root
 # streamlit run src/ui/streamlit.py

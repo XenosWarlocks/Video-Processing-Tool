@@ -1,3 +1,5 @@
+# proj/src/api/vid_upload.py
+
 import uuid
 import requests
 import os
@@ -30,6 +32,10 @@ class VideoChunkUploader:
         Returns:
             str: Upload ID for tracking
         """
+        # Validate file exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Video file not found: {file_path}")
+
         # Get file size and calculate total chunks
         file_size = os.path.getsize(file_path)
         total_chunks = (file_size + chunk_size - 1) // chunk_size
@@ -53,7 +59,7 @@ class VideoChunkUploader:
 
                 # Upload chunk
                 response = requests.post(
-                    f"{self.api_url}/upload_chunked",
+                    f"{self.api_url}/video/upload",
                     files=files,
                     data={
                         'chunk_number': chunk_number,
@@ -85,7 +91,7 @@ class VideoChunkUploader:
         """
         # Prepare request payload
         response = requests.post(
-            f"{self.api_url}/process",
+            f"{self.api_url}/video/process",
             json={
                 'upload_id': upload_id,
                 'processing_options': processing_options or ['ai_insights']
@@ -100,7 +106,8 @@ def main():
     
     try:
         # Upload video in chunks
-        upload_id = uploader.upload_video_in_chunks('path/to/large/video.mp4')
+        video_path = 'path/to/your/video.mp4'  # Replace with actual path
+        upload_id = uploader.upload_video_in_chunks(video_path)
         
         # Start processing
         processing_response = uploader.start_video_processing(
