@@ -13,7 +13,7 @@ class VideoChunkUploader:
         Args:
             api_url (str): Base URL of the video processing API
         """
-        self.api_url = api_url
+        self.api_url = api_url.rstrip('/')  # Remove trailing slash if present
 
     def upload_video_in_chunks(
         self,
@@ -57,20 +57,28 @@ class VideoChunkUploader:
                     )
                 }
 
-                # Upload chunk
-                response = requests.post(
-                    f"{self.api_url}/video/upload",
-                    files=files,
-                    data={
-                        'chunk_number': chunk_number,
-                        'total_chunks': total_chunks,
-                        'upload_id': upload_id
-                    }
-                )
+                # Upload chunk with timeout and error handling
+                try:
+                    response = requests.post(
+                        f"{self.api_url}/video/upload",
+                        files=files,
+                        data={
+                            'chunk_number': chunk_number,
+                            'total_chunks': total_chunks,
+                            'upload_id': upload_id
+                        },
+                        timeout=30  # Set timeout to 30 seconds
+                    )
 
-                # Check response
-                if response.status_code not in [200, 201]:
-                    raise Exception(f"Chunk upload failed: {response.text}")
+                    # Raise an exception for bad status codes
+                    response.raise_for_status()
+                    
+                except requests.RequestException as e:
+                    raise Exception(f"Chunk upload failed: {e}")
+                
+                # # Check response
+                # if response.status_code not in [200, 201]:
+                #     raise Exception(f"Chunk upload failed: {response.text}")
                 
         return upload_id
     
@@ -89,16 +97,25 @@ class VideoChunkUploader:
         Returns:
             dict: Processing initiation response
         """
-        # Prepare request payload
-        response = requests.post(
-            f"{self.api_url}/video/process",
-            json={
-                'upload_id': upload_id,
-                'processing_options': processing_options or ['ai_insights']
-            }
-        )
+        
+        try:
+            # Prepare request payload
+            response = requests.post(
+                f"{self.api_url}/video/process",
+                json={
+                    'upload_id': upload_id,
+                    'processing_options': processing_options or ['ai_insights']
+                },
+                timeout=120     # 2-minute timeout for processing request
+            )
 
-        return response.json()
+            # Raise an exception for bad status codes
+            response.raise_for_status()
+
+            return response.json()
+        
+        except requests.RequestException as e:
+            raise Exception(f"Processing initiation failed: {e}")
     
 # Example usage
 def main():

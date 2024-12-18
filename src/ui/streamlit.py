@@ -1,6 +1,7 @@
 # proj/src/ui/streamlit.py
 import sys
 import os
+import tempfile
 from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
@@ -14,11 +15,13 @@ import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
 import numpy as np
+import requests
 from datetime import datetime
 
 from src.core.config_manager import ConfigManager
 from src.video_processing.video_handler import VideoProcessor
 from src.ai_integration.gemini_processor import GeminiProcessor
+from src.api.vid_upload import VideoChunkUploader
 
 class EnhancedStreamlitApp:
     def __init__(self):
@@ -147,31 +150,71 @@ class EnhancedStreamlitApp:
     
     def process_video(self, uploaded_file):
         """
-        Advanced video processing with richer metadata
+        Advanced video processing with chunk-based upload and processing
+        
+        Args:
+            uploaded_file (UploadFile): Uploaded video file from Streamlit
+        
+        Returns:
+            dict: Processed video results
         """
-        start_time = datetime.now()
+
+        # Temporary save the uploaded file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as temp_file:
+            temp_file.write(uploaded_file.getvalue())
+            temp_file_path = temp_file.name
+
+        try:
+            # Initialize the chunk uploader
+            chunk_uploader = VideoChunkUploader()
+
+            # Upload video in chunks
+            try:
+                upload_id = chunk_uploader.upload_video_in_chunks(temp_file_path)
+            except requests.RequestException as e:
+                st.error(f"Upload Error: {e}")
+                return {'error': 'Video upload failed'}
+            except FileNotFoundError:
+                st.error("Temporary video file could not be found.")
+                return {'error': 'File processing error'}
+
+            # Start video processing with configurable options
+            processing_options = []
+            if self.ai_insights:
+                processing_options.append("AI Insights")
+            if self.sentiment_analysis:
+                processing_options.append("Sentiment Analysis")
+
+            try:
+                processing_response = chunk_uploader.start_video_processing(
+                    upload_id,
+                    processing_options=processing_options
+                )
+                
+                # Validate processing response
+                if 'error' in processing_response:
+                    st.error(f"Processing Error: {processing_response['error']}")
+                    return processing_response
+                
+                return processing_response
+
+            except requests.RequestException as e:
+                st.error(f"Processing Request Error: {e}")
+                return {'error': 'Video processing request failed'}
+            except Exception as e:
+                st.error(f"Unexpected Processing Error: {e}")
+                return {'error': 'Unexpected error during video processing'}
         
-        # Enhanced video processing
-        processed_frames = self.video_processor.process_video(
-            uploaded_file, 
-            interval=self.sampling_interval,
-            detail_level=self.detail_level
-        )
+        except Exception as e:
+            st.error(f"Unexpected Error: {e}")
+            return {'error': 'An unexpected error occurred'}
         
-        # Optional AI processing
-        if self.ai_insights:
-            ai_enhanced_data = self.ai_processor.process(
-                processed_frames, 
-                sentiment_analysis=self.sentiment_analysis
-            )
-            
-            # Performance tracking
-            end_time = datetime.now()
-            ai_enhanced_data['processing_time'] = (end_time - start_time).total_seconds()
-            
-            return ai_enhanced_data
-        
-        return processed_frames
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except Exception:
+                pass
     
     def render_results(self, results: List[Dict[str, Any]]):
         """
@@ -257,8 +300,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# From project root
-# uvicorn src.api.vid_api:app --reload
-# From project root
-# streamlit run src/ui/streamlit.py
