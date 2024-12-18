@@ -1,109 +1,171 @@
 # proj/src/video_processing/video_compressor.py
 
 import os
-import subprocess
 import logging
-from typing import Optional
+import ffmpeg
 
 class VideoCompressor:
-    @staticmethod
+    # Bitrate constraints
+    MIN_TOTAL_BITRATE = 11000  # bps
+    MIN_AUDIO_BITRATE = 32000  # bps
+    MAX_AUDIO_BITRATE = 256000  # bps
+    MIN_VIDEO_BITRATE = 100000  # bps
+
+    @classmethod
     def compress_video(
-        input_path: str,
-        output_path: Optional[str] = None,
-        target_size_mb: int = 100,
-        crf: int = 23,
-        preset: str = 'medium'
-    ):
-        """
-        Compress video using FFmpeg with configurable settings.
-        
-        Args:
-            input_path (str): Path to the input video file
-            output_path (str, optional): Path for compressed video. 
-                                         Defaults to input directory if not specified.
-            target_size_mb (int): Target maximum file size in megabytes
-            crf (int): Constant Rate Factor for quality (0-51, lower is higher quality)
-            preset (str): FFmpeg compression preset (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
-        
-        Returns:
-            str: Path to the compressed video file
-        """
-        try:
-            # if no output path specified, create one in the same directory
-            if not output_path:
-                base_name = os.path.splitext(input_path)[0]
-                output_path = f"{base_name}_compressed.mp4"
-
-            # FFmpeg command for compression
-            ffmpeg_command = [
-                'ffmpeg',
-                '-i', input_path,
-                '-c:v', 'libx264',  # Use libx264 codec
-                '-crf', str(crf),   # Constant Rate Factor
-                '-preset', preset,  # Compression preset
-                'acodec', 'aac',
-                output_path
-            ]
-
-            # Execute compression
-            result = subprocess.run(
-                ffmpeg_command,
-                capture_output=True,
-                text=True,
-            )
-
-            # Check if compression was successful
-            if result.returncode != 0:
-                logging.error(f"Video compression failed: {result.stderr}")
-                raise RuntimeError("Video compression failed")
-            
-            # Verify compressed file size
-            compressed_size = os.path.getsize(output_path) / (1024 * 1024)  # Size in MB
-            if compressed_size > target_size_mb:
-                logging.warning(f"Compressed file size ({compressed_size:.2f}MB) exceeds target size ({target_size_mb}MB)")
-                raise RuntimeError("Compressed file size exceeds target size")
-            
-            return output_path
-        
-        except Exception as e:
-            logging.error(f"Error during video compression: {e}")
-            raise
-
-    @staticmethod
-    def decompress_video(
-        compressed_path: str,
-        output_path: Optional[str] = None
+        cls,
+        video_path: str, 
+        target_size_kb: int = 1024,  # Default 1MB
+        two_pass: bool = True,
+        filename_suffix: str = 'compressed_'
     ) -> str:
         """
-        Decompress or copy back the original video.
-        In this implementation, it's essentially a file copy.
+        Intelligently compress video to target size with advanced bitrate management.
         
         Args:
-            compressed_path (str): Path to the compressed video
-            output_path (str, optional): Destination path for decompressed video
+            video_path (str): Full path to the input video
+            target_size_kb (int): Target file size in kilobytes
+            two_pass (bool): Enable two-pass encoding for better quality
+            filename_suffix (str): Suffix for output filename
         
         Returns:
-            str: Path to the decompressed/original video file
+            str: Path to compressed video or False if compression fails
         """
         try:
-            # If no output path specified, create one in the same directory
-            if not output_path:
-                base_name = os.path.splitext(compressed_path)[0]
-                output_path = f"{base_name}_decompressed.mp4"
+            # Validate input file
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Input video file not found: {video_path}")
 
-            # Simply copy the file (in most cases, FFmpeg compression is reversible)
-            subprocess.run(['cp', compressed_path, output_path], check=True)
+            # Generate output filename
+            filename, ext = os.path.splitext(video_path)
+            output_path = f"{filename}_{filename_suffix}.mp4"
+
+            # Probe video metadata
+            probe = ffmpeg.probe(video_path)
+            video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
             
+            # Calculate video duration
+            duration = float(probe['format']['duration'])
+            
+            # Get audio bitrate (if exists)
+            audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+            audio_bitrate = float(audio_stream['bit_rate']) if audio_stream else cls.MIN_AUDIO_BITRATE
+
+            # Calculate target total bitrate
+            target_total_bitrate = (target_size_kb * 1024 * 8) / (1.073741824 * duration)
+
+            # Validate bitrate
+            if target_total_bitrate < cls.MIN_TOTAL_BITRATE:
+                logging.warning(f"Target bitrate {target_total_bitrate} is extremely low. Compression may fail.")
+                return False
+
+            # Adjust audio bitrate
+            if 10 * audio_bitrate > target_total_bitrate:
+                audio_bitrate = max(
+                    min(target_total_bitrate / 10, cls.MAX_AUDIO_BITRATE), 
+                    cls.MIN_AUDIO_BITRATE
+                )
+
+            # Calculate video bitrate
+            video_bitrate = target_total_bitrate - audio_bitrate
+            if video_bitrate < 1000:
+                logging.error(f"Video bitrate {video_bitrate} is too low for compression.")
+                return False
+
+            # Compression with two-pass option
+            input_stream = ffmpeg.input(video_path)
+            
+            if two_pass:
+                # First pass
+                (
+                    input_stream
+                    .output(os.devnull, 
+                        **{
+                            'c:v': 'libx264', 
+                            'b:v': f'{int(video_bitrate)}', 
+                            'pass': 1, 
+                            'f': 'mp4'
+                        }
+                    )
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+
+                # Second pass
+                (
+                    input_stream
+                    .output(
+                        output_path, 
+                        **{
+                            'c:v': 'libx264', 
+                            'b:v': f'{int(video_bitrate)}', 
+                            'pass': 2, 
+                            'c:a': 'aac', 
+                            'b:a': f'{int(audio_bitrate)}'
+                        }
+                    )
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+            else:
+                # Single pass compression
+                (
+                    input_stream
+                    .output(
+                        output_path, 
+                        **{
+                            'c:v': 'libx264', 
+                            'b:v': f'{int(video_bitrate)}', 
+                            'c:a': 'aac', 
+                            'b:a': f'{int(audio_bitrate)}'
+                        }
+                    )
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+
+            # Verify output size
+            output_size = os.path.getsize(output_path) / 1024  # KB
+            logging.info(f"Compressed video size: {output_size:.2f} KB (Target: {target_size_kb} KB)")
+
+            # Recursive compression if size is still too large
+            if output_size > target_size_kb:
+                logging.warning("Initial compression didn't meet size requirements. Attempting recursive compression.")
+                return cls.compress_video(
+                    output_path, 
+                    target_size_kb, 
+                    two_pass, 
+                    filename_suffix + 'retry_'
+                )
+
             return output_path
-        
+
+        except ffmpeg.Error as e:
+            logging.error(f"FFmpeg error: {e.stderr.decode()}")
+            return False
         except Exception as e:
-            logging.error(f"Error during video decompression: {e}")
-            raise
+            logging.error(f"Unexpected compression error: {e}")
+            return False
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Example usage
 if __name__ == "__main__":
-    input_video = r"sample/Transformers.mkv"
-    compressed_video = VideoCompressor.compress_video(input_video)
-    print(f"Video compressed to: {compressed_video}")
+    video_path = r"C:\Users\mannu\Downloads\JSproj\megaProj\vid_pro_tool\src\video_processing\sample\Transformers.mkv"
+    compressed_video = VideoCompressor.compress_video(
+        video_path, 
+        target_size_kb=1024,  # 1MB target
+        two_pass=True
+    )
+    
+    if compressed_video:
+        print(f"Video compressed successfully: {compressed_video}")
+    else:
+        print("Video compression failed.")
+
 
 # python src/video_processing/video_compressor.py
