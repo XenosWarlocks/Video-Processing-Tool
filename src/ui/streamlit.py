@@ -22,6 +22,7 @@ from src.core.config_manager import ConfigManager
 from src.video_processing.video_handler import VideoProcessor
 from src.ai_integration.gemini_processor import GeminiProcessor
 from src.api.vid_upload import VideoChunkUploader
+from src.payment.payment_processor import PaymentProcessor, PaymentConfig, PaymentUI
 
 class EnhancedStreamlitApp:
     def __init__(self):
@@ -31,6 +32,17 @@ class EnhancedStreamlitApp:
         self.config_manager = ConfigManager()
         self.video_processor = VideoProcessor(self.config_manager)
         self.ai_processor = GeminiProcessor(self.config_manager)
+
+        # Initialize payment processor
+        payment_config = PaymentConfig(
+            stripe_public_key=os.getenv('STRIPE_PUBLIC_KEY'),
+            stripe_secret_key=os.getenv('STRIPE_SECRET_KEY'),
+            buymeacoffee_token=os.getenv('BUYMEACOFFEE_TOKEN'),
+            patreon_client_id=os.getenv('PATREON_CLIENT_ID'),
+            patreon_client_secret=os.getenv('PATREON_CLIENT_SECRET')
+        )
+        self.payment_processor = PaymentProcessor(payment_config)
+        self.payment_ui = PaymentUI(self.payment_processor)
         
         self._setup_page_config()
         self._apply_custom_styling()
@@ -274,25 +286,34 @@ class EnhancedStreamlitApp:
         """
         Main application runner with enhanced UI
         """
-        st.title("🤖 EduVision: AI-Powered Video Analysis")
-        st.markdown("Unlock deep insights from your educational videos with advanced AI technology.")
+        st.title("🤖 AI-Powered Video Analysis")
+        st.markdown("Unlock deep insights from your videos with advanced AI technology.")
         
         # Sidebar configuration
         self.render_sidebar()
         
-        # Stylized file uploader
-        st.markdown("### 📤 Upload Your Video")
-        uploaded_file = st.file_uploader(
-            "Drag and drop or click to select", 
-            type=['mp4', 'avi', 'mov'],
-            help="Support for MP4, AVI, and MOV formats"
-        )
-        
-        if uploaded_file is not None:
-            with st.spinner("🧠 AI is analyzing your video..."):
-                results = self.process_video(uploaded_file)
+        # Main tabs
+        main_tab, support_tab = st.tabs(["🎥 Video Analysis", "💖 Support Us"])
+
+        with main_tab:
+            # video processing UI
+            # Stylized file uploader
+            st.markdown("### 📤 Upload Your Video")
+            uploaded_file = st.file_uploader(
+                "Drag and drop or click to select", 
+                type=['mp4', 'avi', 'mov'],
+                help="Support for MP4, AVI, and MOV formats"
+            )
             
-            self.render_results(results)
+            if uploaded_file is not None:
+                with st.spinner("🧠 AI is analyzing your video..."):
+                    results = self.process_video(uploaded_file)
+                
+                self.render_results(results)
+        
+        with support_tab:
+            # Render payment options
+            self.payment_ui.render_payment_section()
 
 def main():
     app = EnhancedStreamlitApp()

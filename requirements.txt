@@ -37,3 +37,8 @@ fastapi==0.109.0
 
 # Data Validation
 pydantic==2.5.2
+
+# Pythonic interface to FFmpeg
+ffmpeg-python
+
+stripe

@@ -1,4 +1,5 @@
 # proj/src/ai_integration/text_enrichment.py
+import os
 import re
 from typing import List, Dict, Any, Optional
 from nltk.corpus import stopwords
@@ -13,6 +14,14 @@ class TextEnrichmentProcessor:
     def __init__(self):
         # Download necessary NLTK resources
         import nltk
+        """
+        Initialize the text enrichment processor with required NLTK downloads
+        """
+        # Create data directory if it doesn't exist
+        nltk_data_dir = os.path.join(os.path.expanduser('~'), 'nltk_data')
+        if not os.path.exists(nltk_data_dir):
+            os.makedirs(nltk_data_dir)
+        
         try:
             nltk.data.find('tokenizers/punkt')
             nltk.data.find('corpora/stopwords')

@@ -45,5 +45,10 @@ video-processing-tool/
 │   └── app.log
 │
 ├── requirements.txt
+├── Dockerfile
+├── docker-composer.yml
+├── .env.example
+├── .env
+├── setup.py
 └── README.md
 ```
