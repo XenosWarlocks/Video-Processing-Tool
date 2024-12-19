@@ -1,171 +1,181 @@
-# proj/src/video_processing/video_compressor.py
-
 import os
 import logging
-import ffmpeg
+import pathlib
+import subprocess
+from typing import Optional, Dict, Any
 
 class VideoCompressor:
-    # Bitrate constraints
-    MIN_TOTAL_BITRATE = 11000  # bps
-    MIN_AUDIO_BITRATE = 32000  # bps
-    MAX_AUDIO_BITRATE = 256000  # bps
-    MIN_VIDEO_BITRATE = 100000  # bps
+    @staticmethod
+    def find_ffmpeg() -> Optional[str]:
+        """Find FFmpeg executable path on Windows"""
+        ffmpeg_path = r"C:\Users\{YOU}\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-7.1-full_build\bin\ffmpeg.exe"
+        # Change {YOU} to your path name
+        
+        if os.path.isfile(ffmpeg_path):
+            return ffmpeg_path
+        return None
 
+    @staticmethod
+    def probe_video(ffmpeg_path: str, video_path: str) -> Dict[str, Any]:
+        """Get video metadata using ffprobe"""
+        ffprobe_path = ffmpeg_path.replace('ffmpeg.exe', 'ffprobe.exe')
+        
+        cmd = [
+            ffprobe_path,
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height,codec_name,duration',
+            '-show_entries', 'format=duration',
+            '-of', 'json',
+            str(video_path)
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            import json
+            return json.loads(result.stdout)
+        except subprocess.CalledProcessError as e:
+            print(f"FFprobe error: {e.stderr}")
+            raise
+
+    @staticmethod
+    def list_sample_folder_contents():
+        """List contents of the sample folder with detailed path information"""
+        try:
+            script_path = pathlib.Path(__file__).resolve()
+            print(f"\nScript location: {script_path}")
+            
+            project_root = script_path.parents[2]
+            print(f"Project root: {project_root}")
+            
+            sample_folder = project_root / 'src' / 'video_processing' / 'sample'
+            print(f"Sample folder path: {sample_folder}")
+            
+            sample_folder.mkdir(parents=True, exist_ok=True)
+            
+            print("\nDirectory contents:")
+            for item in sample_folder.iterdir():
+                size = item.stat().st_size / 1024  # KB
+                print(f"- {item.name} (Size: {size:.2f} KB)")
+                print(f"  Absolute path: {item.absolute()}")
+                print(f"  Exists: {item.exists()}")
+                print(f"  Is file: {item.is_file()}")
+                print(f"  Read permission: {os.access(str(item), os.R_OK)}")
+                
+        except Exception as e:
+            print(f"Error during path checking: {e}")
+            raise
+    
     @classmethod
     def compress_video(
         cls,
-        video_path: str, 
-        target_size_kb: int = 1024,  # Default 1MB
+        input_path: str, 
+        target_size_kb: int = 1024,
         two_pass: bool = True,
-        filename_suffix: str = 'compressed_'
+        filename_suffix: str = 'compressed'
     ) -> str:
-        """
-        Intelligently compress video to target size with advanced bitrate management.
-        
-        Args:
-            video_path (str): Full path to the input video
-            target_size_kb (int): Target file size in kilobytes
-            two_pass (bool): Enable two-pass encoding for better quality
-            filename_suffix (str): Suffix for output filename
-        
-        Returns:
-            str: Path to compressed video or False if compression fails
-        """
+        """Compress video using FFmpeg subprocess"""
         try:
-            # Validate input file
-            if not os.path.exists(video_path):
-                raise FileNotFoundError(f"Input video file not found: {video_path}")
-
-            # Generate output filename
-            filename, ext = os.path.splitext(video_path)
-            output_path = f"{filename}_{filename_suffix}.mp4"
-
-            # Probe video metadata
-            probe = ffmpeg.probe(video_path)
-            video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+            # Find FFmpeg
+            ffmpeg_path = cls.find_ffmpeg()
+            if not ffmpeg_path:
+                raise FileNotFoundError("FFmpeg executable not found")
+            print(f"Found FFmpeg at: {ffmpeg_path}")
             
-            # Calculate video duration
-            duration = float(probe['format']['duration'])
+            # Convert input path to Path object
+            video_path = pathlib.Path(input_path).resolve()
+            print(f"\nProcessing video:")
+            print(f"Input path: {video_path}")
+            print(f"Exists: {video_path.exists()}")
+            print(f"Is file: {video_path.is_file()}")
+            print(f"Read permission: {os.access(str(video_path), os.R_OK)}")
+
+            if not video_path.exists():
+                raise FileNotFoundError(f"Video file not found: {video_path}")
             
-            # Get audio bitrate (if exists)
-            audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
-            audio_bitrate = float(audio_stream['bit_rate']) if audio_stream else cls.MIN_AUDIO_BITRATE
-
-            # Calculate target total bitrate
-            target_total_bitrate = (target_size_kb * 1024 * 8) / (1.073741824 * duration)
-
-            # Validate bitrate
-            if target_total_bitrate < cls.MIN_TOTAL_BITRATE:
-                logging.warning(f"Target bitrate {target_total_bitrate} is extremely low. Compression may fail.")
-                return False
-
-            # Adjust audio bitrate
-            if 10 * audio_bitrate > target_total_bitrate:
-                audio_bitrate = max(
-                    min(target_total_bitrate / 10, cls.MAX_AUDIO_BITRATE), 
-                    cls.MIN_AUDIO_BITRATE
-                )
-
-            # Calculate video bitrate
-            video_bitrate = target_total_bitrate - audio_bitrate
-            if video_bitrate < 1000:
-                logging.error(f"Video bitrate {video_bitrate} is too low for compression.")
-                return False
-
-            # Compression with two-pass option
-            input_stream = ffmpeg.input(video_path)
+            if not video_path.is_file():
+                raise ValueError(f"Path is not a file: {video_path}")
             
-            if two_pass:
-                # First pass
-                (
-                    input_stream
-                    .output(os.devnull, 
-                        **{
-                            'c:v': 'libx264', 
-                            'b:v': f'{int(video_bitrate)}', 
-                            'pass': 1, 
-                            'f': 'mp4'
-                        }
-                    )
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True)
-                )
+            if not os.access(str(video_path), os.R_OK):
+                raise PermissionError(f"No read permission for file: {video_path}")
 
-                # Second pass
-                (
-                    input_stream
-                    .output(
-                        output_path, 
-                        **{
-                            'c:v': 'libx264', 
-                            'b:v': f'{int(video_bitrate)}', 
-                            'pass': 2, 
-                            'c:a': 'aac', 
-                            'b:a': f'{int(audio_bitrate)}'
-                        }
-                    )
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True)
-                )
-            else:
-                # Single pass compression
-                (
-                    input_stream
-                    .output(
-                        output_path, 
-                        **{
-                            'c:v': 'libx264', 
-                            'b:v': f'{int(video_bitrate)}', 
-                            'c:a': 'aac', 
-                            'b:a': f'{int(audio_bitrate)}'
-                        }
-                    )
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True)
-                )
+            # Create output path
+            output_path = video_path.parent / f"{video_path.stem}_{filename_suffix}{video_path.suffix}"
+            print(f"Output path will be: {output_path}")
 
-            # Verify output size
-            output_size = os.path.getsize(output_path) / 1024  # KB
-            logging.info(f"Compressed video size: {output_size:.2f} KB (Target: {target_size_kb} KB)")
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Recursive compression if size is still too large
-            if output_size > target_size_kb:
-                logging.warning("Initial compression didn't meet size requirements. Attempting recursive compression.")
-                return cls.compress_video(
-                    output_path, 
-                    target_size_kb, 
-                    two_pass, 
-                    filename_suffix + 'retry_'
-                )
+            # Get video info
+            try:
+                probe_data = cls.probe_video(ffmpeg_path, str(video_path))
+                stream_data = probe_data.get('streams', [{}])[0]
+                format_data = probe_data.get('format', {})
+                
+                duration = float(format_data.get('duration', 0))
+                width = stream_data.get('width', '?')
+                height = stream_data.get('height', '?')
+                codec = stream_data.get('codec_name', 'unknown')
+                
+                print(f"\nVideo Information:")
+                print(f"Duration: {duration:.2f} seconds")
+                print(f"Codec: {codec}")
+                print(f"Resolution: {width}x{height}")
+                
+                # Calculate target bitrate (bits per second)
+                target_size_bits = target_size_kb * 8 * 1024  # Convert KB to bits
+                bitrate = int(target_size_bits / duration)
+                
+                # Prepare FFmpeg command
+                cmd = [
+                    ffmpeg_path,
+                    '-y',  # Overwrite output file if it exists
+                    '-i', str(video_path),
+                    '-c:v', 'libx264',
+                    '-b:v', f'{bitrate}',
+                    '-maxrate', f'{bitrate*1.5}',
+                    '-bufsize', f'{bitrate*2}',
+                    '-preset', 'medium',
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    str(output_path)
+                ]
+                
+                print("\nStarting compression...")
+                print(f"Target bitrate: {bitrate/1024/1024:.2f} Mbps")
+                
+                # Run FFmpeg
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    print(f"FFmpeg error: {result.stderr}")
+                    raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+                
+                if output_path.exists():
+                    final_size = output_path.stat().st_size / 1024  # KB
+                    print(f"\nCompression complete!")
+                    print(f"Final size: {final_size:.2f} KB")
+                    return str(output_path)
+                else:
+                    raise RuntimeError("Output file was not created")
+                
+            except subprocess.CalledProcessError as e:
+                print(f"FFmpeg process error: {e.stderr}")
+                raise
+            except Exception as e:
+                print(f"Error during video processing: {e}")
+                raise
 
-            return output_path
-
-        except ffmpeg.Error as e:
-            logging.error(f"FFmpeg error: {e.stderr.decode()}")
-            return False
         except Exception as e:
-            logging.error(f"Unexpected compression error: {e}")
+            print(f"Error: {str(e)}")
+            print(f"Error type: {type(e).__name__}")
             return False
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-
-# Example usage
-if __name__ == "__main__":
-    video_path = r"C:\Users\mannu\Downloads\JSproj\megaProj\vid_pro_tool\src\video_processing\sample\Transformers.mkv"
-    compressed_video = VideoCompressor.compress_video(
-        video_path, 
-        target_size_kb=1024,  # 1MB target
-        two_pass=True
-    )
-    
-    if compressed_video:
-        print(f"Video compressed successfully: {compressed_video}")
-    else:
-        print("Video compression failed.")
 
 
 # python src/video_processing/video_compressor.py
