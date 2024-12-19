@@ -31,24 +31,36 @@ class VideoProcessor(BaseProcessor):
         self.max_file_size = self.config.get_config('app', 'video_processing.max_file_size', 1073741824)
         self.allowed_extensions = self.config.get_config('app', 'video_processing.allowed_extensions', ['mp4', 'avi', 'mov'])
 
-    def _validate_video(self, uploaded_file):
+    def _validate_video(self, video_path: str):
         """
-        Validate uploaded video file
+        Validate video file
         
         Args:
-            uploaded_file: Uploaded video file
+            video_path (str): Path to the video file
         
         Raises:
             ValueError: If file is invalid
         """
+        # Check if file exists
+        if not os.path.exists(video_path):
+            raise ValueError(f"Video file not found: {video_path}")
+        
         # Check file size
-        if uploaded_file.size > self.max_file_size:
-            raise ValueError(f"File size exceeds the maximum allowed size of {self.max_file_size / 1024 / 1024} bytes")
+        file_size = os.path.getsize(video_path)
+        if file_size > self.max_file_size:
+            raise ValueError(f"File size exceeds the maximum allowed size of {self.max_file_size / 1024 / 1024} MB")
         
         # Check file extension
-        file_extension = uploaded_file.name.split('.')[-1].lower()
+        file_extension = os.path.splitext(video_path)[1][1:].lower()
         if file_extension not in self.allowed_extensions:
             raise ValueError(f"Invalid file extension. Allowed extensions are: {', '.join(self.allowed_extensions)}")
+        
+        # Validate video can be opened
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            cap.release()
+            raise ValueError("Unable to open video file. File may be corrupted or in an unsupported format.")
+        cap.release()
         
     def _extract_frames(self, video_path: str, interval: int = 2) -> List[Dict[str, Any]]:
         """
@@ -122,7 +134,13 @@ class VideoProcessor(BaseProcessor):
             return ""
         
     def process(self, input_data, **kwargs):
-        return self.process_video(input_data, **kwargs)
+        """
+        Implementation of abstract method from BaseProcessor
+        """
+        if isinstance(input_data, str):
+            return self.process_video(input_data, **kwargs)
+        else:
+            raise ValueError("Input must be a path to a video file")
     
     def process_video(self, uploaded_file, interval: int = 2, detail_level='Medium') -> List[Dict[str, Any]]:
         """
