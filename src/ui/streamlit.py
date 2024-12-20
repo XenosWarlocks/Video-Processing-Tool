@@ -26,6 +26,14 @@ from chat_ui import ChatUI
 from src.api.vid_upload import VideoChunkUploader
 from src.payment.payment_processor import PaymentProcessor, PaymentConfig, PaymentUI
 
+# Set page config before any other Streamlit commands
+st.set_page_config(
+    page_title="🎬 EduVision: AI Video Insights",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 class EnhancedStreamlitApp:
     def __init__(self):
         """
@@ -34,7 +42,8 @@ class EnhancedStreamlitApp:
         self.config_manager = ConfigManager()
         self.video_processor = VideoProcessor(self.config_manager)
         self.ai_processor = GeminiProcessor(self.config_manager)
-        self.chat_ui = ChatUI(self.ai_processor)
+        self.chat_ui = ChatUI()
+        # self.chat_ui.render_chat_interface()
 
         # Initialize payment processor
         payment_config = PaymentConfig(
@@ -47,19 +56,19 @@ class EnhancedStreamlitApp:
         self.payment_processor = PaymentProcessor(payment_config)
         self.payment_ui = PaymentUI(self.payment_processor)
         
-        self._setup_page_config()
+        # self._setup_page_config()
         self._apply_custom_styling()
     
-    def _setup_page_config(self):
-        """
-        Configure Streamlit page layout and advanced styling
-        """
-        st.set_page_config(
-            page_title="🎬 EduVision: AI Video Insights",
-            page_icon="🤖",
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
+    # def _setup_page_config(self):
+    #     """
+    #     Configure Streamlit page layout and advanced styling
+    #     """
+    #     st.set_page_config(
+    #         page_title="🎬 EduVision: AI Video Insights",
+    #         page_icon="🤖",
+    #         layout="wide",
+    #         initial_sidebar_state="expanded"
+    #     )
     
     def _apply_custom_styling(self):
         """
@@ -324,6 +333,7 @@ class EnhancedStreamlitApp:
             # Add clear chat button
             if st.button("Clear Chat History", key="clear_chat"):
                 self.chat_ui.clear_chat_history()
+
         
         with support_tab:
             # Render payment options
