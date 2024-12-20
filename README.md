@@ -34,6 +34,9 @@ video-processing-tool/
 │       └── streamlit.py             # Advanced Streamlit UI
 │
 ├── tests/
+│   ├── sample/
+│   │   ├── __init__.py
+│   │   ├── test_vid.mp4
 │   ├── test_video_processing.py
 │   └── test_ai_integration.py
 │

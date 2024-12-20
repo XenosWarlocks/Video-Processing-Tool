@@ -6,7 +6,6 @@ import time
 from tqdm import tqdm
 from colorama import Fore, Back, Style, init
 
-
 def ensure_package_installed(package_name):
     """
     Ensures a package is installed. Installs it if not present.
@@ -14,99 +13,112 @@ def ensure_package_installed(package_name):
     try:
         __import__(package_name)
     except ImportError:
-        print(Fore.YELLOW + f"Installing missing package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name], stdout=subprocess.DEVNULL)
-        print(Fore.GREEN + f"✔ {package_name} installed successfully.\n")
-
+        print(Fore.RED + f"✘ Package {package_name} not found. Installing...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 # Ensure required dependencies are installed
 required_packages = ["nltk", "tqdm", "colorama"]
 for package in required_packages:
     ensure_package_installed(package)
 
-# Import after installation to avoid missing dependencies
+# Proceed with setup
 import nltk
-
+from tqdm import tqdm
+from colorama import Fore, Back, Style, init
 
 def install_requirements():
     """
-    Install dependencies from requirements.txt, skipping already installed ones.
+    Install dependencies from requirements.txt with a single progress bar.
     """
+    init(autoreset=True)
+
     print(Back.BLUE + Fore.WHITE + Style.BRIGHT + "\n  Installing Python Dependencies  \n")
-    print(Fore.CYAN + "-" * 50 + "\n")
+    print(Fore.CYAN + Style.BRIGHT + "-" * 50 + "\n")
 
     requirements_file = "requirements.txt"
     if not os.path.exists(requirements_file):
-        print(Fore.RED + "✘ requirements.txt not found!\n")
+        print(Fore.RED + "✘ requirements.txt not found!")
         return
 
     with open(requirements_file, "r") as file:
-        requirements = file.readlines()
+        requirements = [line.strip() for line in file if line.strip() and not line.startswith("#")]
 
-    for requirement in tqdm(requirements, desc="Processing requirements", bar_format="{l_bar}{bar:30}{r_bar}", colour="cyan"):
-        package = requirement.strip()
-        if package:
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", package],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                if result.returncode == 0:
-                    print(Fore.GREEN + f"✔ Installed: {package}")
-                elif "already satisfied" in result.stdout:
-                    print(Fore.YELLOW + f"✔ Already installed: {package}")
-                else:
-                    print(Fore.RED + f"✘ Error installing {package}: {result.stderr.strip()}")
-            except Exception as e:
-                print(Fore.RED + f"✘ Failed to process {package}: {str(e)}")
+    with tqdm(total=len(requirements), desc="Installing packages", 
+             bar_format="{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt}", 
+             colour="green", position=0, leave=True) as pbar:
+        
+        # Use carriage return to overwrite previous line
+        print_status = lambda msg: print(f"\033[K{msg}", end="\r")
+        
+        for requirement in requirements:
+            package = requirement.strip()
+            if package:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", package],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    
+                    if result.returncode == 0:
+                        print_status(Fore.GREEN + f"✔ Installed: {package}")
+                    elif "already satisfied" in result.stdout:
+                        print_status(Fore.YELLOW + f"✔ Already installed: {package}")
+                    else:
+                        print_status(Fore.RED + f"✘ Error installing {package}: {result.stderr.strip()}")
+                    
+                    pbar.update(1)
+                    
+                except Exception as e:
+                    print_status(Fore.RED + f"✘ Failed to process {package}: {str(e)}")
+                    pbar.update(1)
 
-    print(Fore.CYAN + "\n" + "-" * 50)
+    print("\n" + Fore.CYAN + Style.BRIGHT + "-" * 50)
     print(Back.GREEN + Fore.WHITE + Style.BRIGHT + "  Dependency Installation Complete!  ")
-    print(Fore.CYAN + "-" * 50 + "\n")
-
+    print(Fore.CYAN + Style.BRIGHT + "-" * 50 + "\n")
 
 def setup_nltk():
     """
-    Download required NLTK data with a visually appealing CLI UI.
+    Download required NLTK data with a single progress bar.
     """
     init(autoreset=True)
 
     print(Back.BLUE + Fore.WHITE + Style.BRIGHT + "\n  Setting Up NLTK Data  \n")
-    print(Fore.CYAN + "-" * 50 + "\n")
+    print(Fore.CYAN + Style.BRIGHT + "-" * 50 + "\n")
 
-    # Required NLTK downloads
     required_packages = [
-        "punkt",
-        "averaged_perceptron_tagger",
-        "wordnet",
-        "stopwords",
+        'punkt',
+        'averaged_perceptron_tagger',
+        'wordnet',
+        'stopwords'
     ]
 
-    # Animated processing of packages
-    print(Fore.MAGENTA + "Processing packages...\n")
-    time.sleep(0.5)  # Small delay for better UI effect
-
-    for package in required_packages:
-        print(Fore.CYAN + f"Checking package: {package}")
-        with tqdm(total=100, desc=f"Installing {package}", bar_format="{l_bar}{bar:30}{r_bar}", colour="yellow") as pbar:
-            try:
-                downloader = nltk.downloader.Downloader()
-                if downloader.is_installed(package):
-                    pbar.update(100)
-                    print(Fore.YELLOW + f"✔ {package} is already installed. Skipping.\n")
-                else:
+    with tqdm(total=len(required_packages), desc="Downloading NLTK packages",
+             bar_format="{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt}",
+             colour="cyan", position=0, leave=True) as pbar:
+        
+        print_status = lambda msg: print(f"\033[K{msg}", end="\r")
+        
+        downloader = nltk.downloader.Downloader()
+        for package in required_packages:
+            print_status(Fore.CYAN + f"Processing: {package}")
+            
+            if downloader.is_installed(package):
+                print_status(Fore.YELLOW + f"✔ {package} is already installed. Skipping.")
+            else:
+                print_status(Fore.BLUE + f"Downloading {package}...")
+                try:
                     nltk.download(package, quiet=True)
-                    pbar.update(100)
-                    print(Fore.GREEN + f"✔ Successfully downloaded {package}.\n")
-            except Exception as e:
-                print(Fore.RED + f"✘ Failed to download {package}: {str(e)}\n")
+                    print_status(Fore.GREEN + f"✔ Successfully downloaded {package}")
+                except Exception as e:
+                    print_status(Fore.RED + f"✘ Failed to download {package}: {str(e)}")
+            
+            pbar.update(1)
 
-    print(Fore.CYAN + "-" * 50)
+    print("\n" + Fore.CYAN + Style.BRIGHT + "-" * 50)
     print(Back.GREEN + Fore.WHITE + Style.BRIGHT + "  NLTK Setup Complete!  ")
-    print(Fore.CYAN + "-" * 50 + "\n")
-
+    print(Fore.CYAN + Style.BRIGHT + "-" * 50 + "\n")
 
 if __name__ == "__main__":
     try:
@@ -114,3 +126,5 @@ if __name__ == "__main__":
         setup_nltk()
     except Exception as e:
         print(Fore.RED + f"✘ Setup failed: {str(e)}")
+
+# python setup.py
