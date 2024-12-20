@@ -3,28 +3,24 @@
 import streamlit as st
 from typing import List, Dict, Optional
 from datetime import datetime
+from src.api.chat_api import ChatAPI
 
 class ChatUI:
-    def __init__(self, ai_processor):
-        """
-        Initialize ChatUI with AI processor
-        
-        Args:
-            ai_processor: AI processor instance (GeminiProcessor)
-        """
-        self.ai_processor = ai_processor
+    def __init__(self):
+        """Initialize ChatUI with ChatAPI"""
+        if 'chat_api' not in st.session_state:
+            st.session_state.chat_api = ChatAPI()
         self.initialize_chat_history()
     
     def initialize_chat_history(self):
         """Initialize chat history in session state if not present"""
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-            
         if "chat_context" not in st.session_state:
             st.session_state.chat_context = {
                 "video_insights": None,
                 "current_topic": None
             }
+        if "processing_message" not in st.session_state:
+            st.session_state.processing_message = False
 
     def update_chat_context(self, video_insights: Optional[Dict] = None):
         """
@@ -36,48 +32,45 @@ class ChatUI:
         if video_insights:
             st.session_state.chat_context["video_insights"] = video_insights
             
-            # Add a system message about the new video context
-            self.add_message(
-                "system",
-                "New video analysis results are available for discussion. "
-                "Feel free to ask questions about the video content!"
+            # Add a system message using ChatAPI
+            system_message = ("New video analysis results are available for discussion. "
+                            "Feel free to ask questions about the video content!")
+            st.session_state.chat_api.send_message(
+                system_message,
+                video_context=video_insights,
+                is_system=True
             )
-
-    def add_message(self, role: str, content: str):
-        """
-        Add a new message to the chat history
-        
-        Args:
-            role (str): Message role ('user', 'assistant', or 'system')
-            content (str): Message content
-        """
-        timestamp = datetime.now().strftime("%H:%M")
-        st.session_state.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": timestamp
-        })
 
     def handle_user_input(self):
         """Handle user input and generate AI response"""
-        if st.session_state.user_input:  # Access the input value from session state
+        # Check if already processing to prevent duplicate messages
+        if st.session_state.processing_message:
+            return
+
+        if st.session_state.user_input:
             user_message = st.session_state.user_input
+            video_context = st.session_state.chat_context.get("video_insights")
             
-            # Add user message
-            self.add_message("user", user_message)
-            
-            # Get AI response
             try:
-                response = self.get_ai_response(user_message)
-                self.add_message("assistant", response)
-            except Exception as e:
-                self.add_message(
-                    "system",
-                    f"Error getting response: {str(e)}"
+                # Set processing flag
+                st.session_state.processing_message = True
+                
+                # Send message through ChatAPI
+                response = st.session_state.chat_api.send_message(
+                    user_message,
+                    video_context=video_context
                 )
-            
-            # Clear input using session state
-            st.session_state.user_input = ""
+                
+                # Clear input and processing flag
+                st.session_state.user_input = ""
+                st.session_state.processing_message = False
+                
+                # Trigger rerender by updating session state
+                st.session_state.last_message_time = datetime.now().isoformat()
+                
+            except Exception as e:
+                st.error(f"Error getting response: {str(e)}")
+                st.session_state.processing_message = False
 
     def render_chat_interface(self):
         """Render the chat interface with message history and input"""
@@ -85,8 +78,13 @@ class ChatUI:
         chat_container = st.container()
         
         with chat_container:
-            # Render message history
-            for message in st.session_state.messages:
+            # Display status while processing
+            if st.session_state.processing_message:
+                st.info("Processing your message...")
+            
+            # Render message history from ChatAPI
+            messages = st.session_state.chat_api.get_chat_history()
+            for message in messages:
                 self.render_message(message)
 
             # Chat input
@@ -97,20 +95,21 @@ class ChatUI:
                 col1, col2 = st.columns([5, 1])
                 
                 with col1:
-                    # Use callback to handle input
                     st.text_input(
                         "Message AI Assistant",
-                        key="user_input",  # Changed key to user_input
+                        key="user_input",
                         placeholder="Type your message here...",
                         label_visibility="collapsed",
-                        on_change=self.handle_user_input  # Add callback
+                        disabled=st.session_state.processing_message,  # Disable while processing
+                        on_change=self.handle_user_input
                     )
                 
                 with col2:
                     st.button(
                         "Send",
                         use_container_width=True,
-                        on_click=self.handle_user_input  # Add callback to button
+                        disabled=st.session_state.processing_message,  # Disable while processing
+                        on_click=self.handle_user_input
                     )
 
     def render_message(self, message: Dict):
@@ -118,11 +117,11 @@ class ChatUI:
         Render a single chat message with appropriate styling
         
         Args:
-            message (dict): Message dictionary with role, content, and timestamp
+            message (dict): Message dictionary with role and content
         """
         role = message["role"]
         content = message["content"]
-        timestamp = message.get("timestamp", "")
+        timestamp = datetime.now().strftime("%H:%M")  # Current time for display
 
         # Define colors and icons for different roles
         role_styles = {
@@ -173,31 +172,12 @@ class ChatUI:
                 unsafe_allow_html=True
             )
 
-    def get_ai_response(self, user_input: str) -> str:
-        """
-        Get AI response based on user input and current context
-        
-        Args:
-            user_input (str): User's message
-            
-        Returns:
-            str: AI response
-        """
-        # Get video context if available
-        video_context = st.session_state.chat_context.get("video_insights")
-        
-        # Process response through AI processor
-        response = self.ai_processor.generate_chat_response(
-            user_input,
-            video_context=video_context
-        )
-        
-        return response
-
     def clear_chat_history(self):
         """Clear the chat history"""
-        st.session_state.messages = []
+        if 'chat_api' in st.session_state:
+            st.session_state.chat_api.clear_history()
         st.session_state.chat_context = {
             "video_insights": None,
             "current_topic": None
         }
+        st.session_state.processing_message = False
