@@ -3,6 +3,7 @@ import sys
 import os
 import tempfile
 from dotenv import load_dotenv
+
 # Load environment variables
 load_dotenv()
 # Add the project root directory to the Python path
@@ -21,6 +22,7 @@ from datetime import datetime
 from src.core.config_manager import ConfigManager
 from src.video_processing.video_handler import VideoProcessor
 from src.ai_integration.gemini_processor import GeminiProcessor
+from chat_ui import ChatUI
 from src.api.vid_upload import VideoChunkUploader
 from src.payment.payment_processor import PaymentProcessor, PaymentConfig, PaymentUI
 
@@ -32,6 +34,7 @@ class EnhancedStreamlitApp:
         self.config_manager = ConfigManager()
         self.video_processor = VideoProcessor(self.config_manager)
         self.ai_processor = GeminiProcessor(self.config_manager)
+        self.chat_ui = ChatUI(self.ai_processor)
 
         # Initialize payment processor
         payment_config = PaymentConfig(
@@ -293,7 +296,7 @@ class EnhancedStreamlitApp:
         self.render_sidebar()
         
         # Main tabs
-        main_tab, support_tab = st.tabs(["🎥 Video Analysis", "💖 Support Us"])
+        main_tab, chat_tab, support_tab = st.tabs(["🎥 Video Analysis", "💬 AI Chat", "💖 Support Us"])
 
         with main_tab:
             # video processing UI
@@ -309,7 +312,18 @@ class EnhancedStreamlitApp:
                 with st.spinner("🧠 AI is analyzing your video..."):
                     results = self.process_video(uploaded_file)
                 
+                # Update chat context with video results
+                self.chat_ui.update_chat_context(results)
                 self.render_results(results)
+        
+        with chat_tab:
+            # Render chat interface
+            st.markdown("### 💬 Chat with AI Assistant")
+            self.chat_ui.render_chat_interface()
+            
+            # Add clear chat button
+            if st.button("Clear Chat History", key="clear_chat"):
+                self.chat_ui.clear_chat_history()
         
         with support_tab:
             # Render payment options
