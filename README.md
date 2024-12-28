@@ -79,7 +79,13 @@ video-processing-tool/
 │   │   └── text_enrichment.py       # AI-powered text enhancement
 │   │
 │   └── ui/
+│   ├── ai_integration/
+│       │   ├── inputs.py
+│       │   ├── cards.py
+│       │   ├── button.py
+│       │   └── theme.py
 │       ├── __init__.py
+│       ├── chat_ui.py
 │       └── streamlit.py             # Advanced Streamlit UI
 │
 ├── tests/
