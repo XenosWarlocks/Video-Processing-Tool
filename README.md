@@ -1,57 +1,42 @@
-# Something is here
+# AI-Powered Video Analysis Platform
 
-## Project Setup Script
+## Overview
 
 A user-friendly Python script that handles the installation of all required packages for this project. The script features a clean progress tracking interface and automated NLTK data downloads.
 
+## Features
+
+*   **Chunked Video Upload:** Efficiently upload large video files in smaller chunks, ensuring smooth processing and minimizing upload failures.
+
+*   **AI-Powered Analysis:**
+    *   **Frame Extraction:** Extracts keyframes from videos at configurable intervals.
+    *   **Gemini AI Integration:** Utilizes the Gemini AI model to generate insightful summaries, identify key concepts, and analyze the content of each frame.
+    *   **Sentiment Analysis:** Detects and analyzes the emotional tone of the video content.
+*   **Interactive Chat UI:** Engage in a conversation with an AI assistant to ask questions about the video analysis results, fostering a deeper understanding of the content.
+*   **Visually Appealing UI:**
+    *   **Custom Theme:** A modern and cohesive design with a well-defined color palette and typography.
+    *   **Reusable UI Components:** Modular and maintainable UI elements like buttons, cards, and inputs, built using Streamlit and custom CSS.
+    *   **Responsive Design:** Ensures optimal viewing experience across different devices and screen sizes.
+*   **Payment Integration:** Supports donations through platforms like Buy Me a Coffee and Patreon, allowing users to contribute to the project's development.
+
+## Getting Started
+
 ### Prerequisites
 
-- Python 3.7+
-- pip package manager
+*   Python 3.8 or higher
+*   pip package manager
+*   A Gemini API key (set as the `GEMINI_API_KEY` environment variable)
+*   Stripe API keys (if using Stripe for payments)
+*   Buy Me a Coffee/Patreon tokens (if applicable)
 
-### Quick Start
 
-1. Clone the repository:
-
-    ```bash
-    git clone https://github.com/XenosWarlocks/Video-Processing-Tool.git
-    cd Video-Processing-Tool
-    ```
-
-2. Create and activate a virtual environment (recommended):
-
-    ```bash
-    python -m venv venv
-
-    # Windows
-    .\venv\Scripts\activate
-
-    # macOS/Linux
-    source venv/bin/activate
-    ```
-
-3. Run the setup script:
-
-    ```bash
-    python setup.py
-    ```
-
-The script will:
-
-- Automatically install required base packages (tqdm, colorama, nltk)
-- Install all project dependencies from requirements.txt
-- Download necessary NLTK data packages
-- Show installation progress with status updates
-
-### Notes
-
-- Make sure your requirements.txt is in the same directory as setup.py
-- For development setup, add your development dependencies to requirements.txt
-- If you encounter any permission errors, try running your terminal as administrator
 
 ## Project structure
 
+The project follows a modular and well-organized structure:
+
 ```bash
+
 video-processing-tool/
 │
 ├── src/
@@ -110,3 +95,79 @@ video-processing-tool/
 ├── setup.py
 └── README.md
 ```
+
+## How It Works
+
+1. **Video Upload:** Users upload videos through the Streamlit UI. The `VideoChunkUploader` in `vid_upload.py` splits the video into smaller chunks and uploads them to the server.
+2. **Chunk Storage:** The `ChunkedUploadManager` in `chunk_api.py` handles the storage of these chunks in the `uploads/chunks` directory.
+3. **Video Assembly:** Once all chunks are uploaded, the `VideoUploadManager` in `vid_api.py` assembles them into a complete video file in the `uploads/videos` directory.
+4. **Video Processing:** The `VideoProcessor` in `video_handler.py` extracts frames from the video at specified intervals.
+5. **AI Analysis:** The `GeminiProcessor` in `gemini_processor.py` analyzes each frame, generating summaries, identifying key concepts, and performing sentiment analysis.
+6. **Results Storage:** The `vid_api.py` stores the analysis results in JSON format in the `uploads/processed` directory.
+7. **UI Interaction:** The `streamlit.py` file orchestrates the Streamlit UI, allowing users to upload videos, configure settings, view analysis results, and interact with the AI chat assistant.
+8. **Chat Interface:** The `chat_ui.py` file provides the chat interface, powered by the `ChatAPI` in `chat_api.py`, which interacts with the Gemini AI model to answer user questions.
+9. **Payment Processing:** The `payment_ui.py` and `payment_processor.py` files handle payment integration, allowing users to support the project through donations.
+
+### Installation
+
+1. Clone the repository:
+
+    ```bash
+    https://github.com/XenosWarlocks/Video-Processing-Tool.git
+    cd Video-Processing-Tool
+    ```
+
+2. Create a virtual environment (recommended):
+
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # On Linux/macOS
+    venv\Scripts\activate  # On Windows
+    ```
+
+3. Install dependencies:
+
+     ```bash
+    python setup.py
+    ```
+
+    ### Notes
+
+    - Make sure your requirements.txt is in the same directory as setup.py
+    - For development setup, add your development dependencies to requirements.txt
+    - If you encounter any permission errors, try running your terminal as administrator
+    - Automatically install required base packages (tqdm, colorama, nltk)
+    - Install all project dependencies from requirements.txt
+    - Download necessary NLTK data packages
+    - Show installation progress with status updates
+
+4. Set up environment variables:
+    *   Create a `.env` file based on the provided `.env.example`.
+    *   Fill in your Gemini API key, Stripe keys, and other relevant tokens.
+
+### Running the Application
+
+1. Navigate to the project root directory:
+
+    ```bash
+    cd Video-Processing-Tool
+    ```
+
+2. Activate the virtual environment (if you created one):
+
+    ```bash
+    source venv/bin/activate  # On Linux/macOS
+    venv\Scripts\activate  # On Windows
+    ```
+
+3. Run the Streamlit app:
+
+    ```bash
+    streamlit run src/ui/streamlit.py
+    ```
+
+4. Open your web browser and go to the URL provided by Streamlit (usually `http://localhost:8501`).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
