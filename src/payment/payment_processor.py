@@ -1,14 +1,9 @@
 # src/payment/payment_processor.py
 import stripe
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import requests
 import os
 from dataclasses import dataclass
-import logging
-
-# Configure logging
-logging.basicConfig(filename='payment.log', level=logging.ERROR,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 @dataclass
 class PaymentConfig:
@@ -17,11 +12,6 @@ class PaymentConfig:
     buymeacoffee_token: str
     patreon_client_id: str
     patreon_client_secret: str
-
-    def __post_init__(self):
-        if not all([self.stripe_public_key, self.stripe_secret_key, self.buymeacoffee_token,
-                    self.patreon_client_id, self.patreon_client_secret]):
-            raise ValueError("All payment configuration fields must be set.")
 
 class PaymentProcessor:
     def __init__(self, config: PaymentConfig):
@@ -32,9 +22,6 @@ class PaymentProcessor:
         """
         Create a Stripe checkout session for one-time payments
         """
-        if not price_id or not isinstance(price_id, str):
-            return {'error': 'Invalid price ID'}
-
         try:
             session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
@@ -47,35 +34,13 @@ class PaymentProcessor:
                 cancel_url='https://example.com/cancel',
             )
             return {'session_id': session.id, 'url': session.url}
-        except stripe.error.CardError as e:
-            logging.error(f"Stripe CardError: {e}")
-            return {'error': 'Card error: ' + str(e)}
-        except stripe.error.RateLimitError as e:
-            logging.error(f"Stripe RateLimitError: {e}")
-            return {'error': 'Too many requests. Please try again later.'}
-        except stripe.error.InvalidRequestError as e:
-            logging.error(f"Stripe InvalidRequestError: {e}")
-            return {'error': 'Invalid request: ' + str(e)}
-        except stripe.error.AuthenticationError as e:
-            logging.error(f"Stripe AuthenticationError: {e}")
-            return {'error': 'Authentication error: ' + str(e)}
-        except stripe.error.APIConnectionError as e:
-            logging.error(f"Stripe APIConnectionError: {e}")
-            return {'error': 'Network error: ' + str(e)}
         except stripe.error.StripeError as e:
-            logging.error(f"Stripe StripeError: {e}")
-            return {'error': 'Payment failed: ' + str(e)}
-        except Exception as e:
-            logging.error(f"Unexpected error: {e}")
-            return {'error': 'An unexpected error occurred.'}
-
+            return {'error': str(e)}
+    
     def create_stripe_subscription(self, price_id: str) -> Dict[str, Any]:
         """
         Create a Stripe subscription checkout session
         """
-        if not price_id or not isinstance(price_id, str):
-            return {'error': 'Invalid price ID'}
-
         try:
             session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
@@ -88,28 +53,9 @@ class PaymentProcessor:
                 cancel_url='http://localhost:8501/cancel',
             )
             return {'session_id': session.id, 'url': session.url}
-        except stripe.error.CardError as e:
-            logging.error(f"Stripe CardError: {e}")
-            return {'error': 'Card error: ' + str(e)}
-        except stripe.error.RateLimitError as e:
-            logging.error(f"Stripe RateLimitError: {e}")
-            return {'error': 'Too many requests. Please try again later.'}
-        except stripe.error.InvalidRequestError as e:
-            logging.error(f"Stripe InvalidRequestError: {e}")
-            return {'error': 'Invalid request: ' + str(e)}
-        except stripe.error.AuthenticationError as e:
-            logging.error(f"Stripe AuthenticationError: {e}")
-            return {'error': 'Authentication error: ' + str(e)}
-        except stripe.error.APIConnectionError as e:
-            logging.error(f"Stripe APIConnectionError: {e}")
-            return {'error': 'Network error: ' + str(e)}
         except stripe.error.StripeError as e:
-            logging.error(f"Stripe StripeError: {e}")
-            return {'error': 'Payment failed: ' + str(e)}
-        except Exception as e:
-            logging.error(f"Unexpected error: {e}")
-            return {'error': 'An unexpected error occurred.'}
-
+            return {'error': str(e)}
+        
     def get_buymeacoffee_widget(self) -> str:
         """
         Generate Buy Me a Coffee widget HTML
