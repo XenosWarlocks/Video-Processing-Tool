@@ -4,6 +4,7 @@ import uuid
 import requests
 import os
 from typing import Optional
+import time
 
 class VideoChunkUploader:
     def __init__(self, api_url: str = "http://localhost:8000"):
@@ -19,7 +20,8 @@ class VideoChunkUploader:
         self,
         file_path: str,
         chunk_size: int = 10 * 1024 * 1024,  # 10 MB chunks
-        upload_id: Optional[str] = None
+        upload_id: Optional[str] = None,
+        max_retries: int = 3
     ) -> str:
         """
         Upload a video file in chunks
@@ -58,28 +60,30 @@ class VideoChunkUploader:
                 }
 
                 # Upload chunk with timeout and error handling
-                try:
-                    response = requests.post(
-                        f"{self.api_url}/video/upload",
-                        files=files,
-                        data={
-                            'chunk_number': chunk_number,
-                            'total_chunks': total_chunks,
-                            'upload_id': upload_id
-                        },
-                        timeout=30  # Set timeout to 30 seconds
-                    )
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.post(
+                            f"{self.api_url}/video/upload",
+                            files=files,
+                            data={
+                                'chunk_number': chunk_number,
+                                'total_chunks': total_chunks,
+                                'upload_id': upload_id
+                            },
+                            timeout=30  # Set timeout to 30 seconds
+                        )
 
-                    # Raise an exception for bad status codes
-                    response.raise_for_status()
-                    
-                except requests.RequestException as e:
-                    raise Exception(f"Chunk upload failed: {e}")
+                        # Raise an exception for bad status codes
+                        response.raise_for_status()
+                        break  # Success, exit retry loop
+                    except requests.RequestException as e:
+                        if attempt == max_retries - 1:
+                            raise Exception(f"Chunk upload failed after {max_retries} attempts: {e}")
+                        print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                        time.sleep(2 ** attempt)  # Exponential backoff
                 
-                # # Check response
-                # if response.status_code not in [200, 201]:
-                #     raise Exception(f"Chunk upload failed: {response.text}")
-                
+                print(f"Uploaded chunk {chunk_number}/{total_chunks} for upload ID {upload_id}")
+        
         return upload_id
     
     def start_video_processing(

@@ -4,6 +4,7 @@ import sys
 import uuid
 import json
 import aiofiles
+import shutil
 from typing import List, Optional
 
 # Add project root to Python path
@@ -119,10 +120,38 @@ class VideoUploadManager:
         with open(video_path, 'wb') as outfile:
             for chunk_name in chunks:
                 chunk_path = os.path.join(chunk_dir, chunk_name)
+                if not os.path.exists(chunk_path):
+                    raise FileNotFoundError(f"Missing chunk: {chunk_name}")
                 with open(chunk_path, 'rb') as chunk_file:
                     outfile.write(chunk_file.read())
         
+        # Verify assembled file integrity (optional)
+        if not self._verify_assembled_file(video_path, len(chunks)):
+            raise Exception("Assembled file integrity check failed.")
+        
         return video_path
+
+    def _verify_assembled_file(self, video_path: str, num_chunks: int) -> bool:
+        """
+        Verify the integrity of the assembled video file (optional)
+        
+        This is a placeholder for more advanced verification like checksums
+        """
+        # Basic check: Ensure file size is roughly proportional to the number of chunks
+        expected_size = os.path.getsize(video_path) / num_chunks
+        if expected_size < 1024:  # Sanity check: Each chunk should be at least 1KB
+            return False
+        return True
+
+    def cleanup_chunks(self, upload_id: str):
+        """
+        Remove chunk directory after successful assembly
+        """
+        chunk_dir = os.path.join('uploads/chunks', upload_id)
+        try:
+            shutil.rmtree(chunk_dir)
+        except Exception as e:
+            print(f"Error cleaning up chunks: {e}")
 
     async def process_video(
         self, 
@@ -182,6 +211,17 @@ class VideoUploadManager:
         
         return result_filename
 
+    async def task_monitor(self, upload_id: str, video_path: str, processing_options: Optional[List[str]]):
+        """
+        Monitor the video processing task and handle cleanup
+        """
+        try:
+            await self.process_video(video_path, processing_options)
+        except Exception as e:
+            print(f"Video processing error: {e}")
+        finally:
+            self.cleanup_chunks(upload_id)
+
 def create_video_router(upload_manager: VideoUploadManager) -> APIRouter:
     """
     Create a FastAPI router for video upload and processing
@@ -213,19 +253,27 @@ def create_video_router(upload_manager: VideoUploadManager) -> APIRouter:
         Returns:
             ChunkedUploadResponse: Upload status response
         """
-        # Generate upload ID if not provided
-        upload_id = upload_id or str(uuid.uuid4())
+        # Validate chunk metadata
+        if total_chunks < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Total chunks must be greater than 0"
+            )
         
+        if chunk_number < 1 or chunk_number > total_chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid chunk number"
+            )
+
         try:
+            # Generate upload ID if not provided
+            upload_id = upload_id or str(uuid.uuid4())
+            
             # Save the chunk
             upload_result = await upload_manager.save_chunk(
                 file, upload_id, chunk_number, total_chunks
             )
-            
-            # Assemble video if all chunks are uploaded
-            if upload_result['status'] == 'completed':
-                video_path = upload_manager.assemble_video(upload_id)
-                upload_result['video_path'] = video_path
             
             return ChunkedUploadResponse(
                 upload_id=upload_id,
@@ -257,8 +305,9 @@ def create_video_router(upload_manager: VideoUploadManager) -> APIRouter:
             
             # Start background processing
             background_tasks.add_task(
-                upload_manager.process_video, 
-                video_path, 
+                upload_manager.task_monitor,
+                request.upload_id,
+                video_path,
                 request.processing_options
             )
             

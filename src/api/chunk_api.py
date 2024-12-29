@@ -79,7 +79,7 @@ class ChunkedUploadManager:
                 detail=f"Chunk upload failed: {str(e)}"
             )
 
-    def assemble_chunks(self, upload_id: str, target_dir: str = 'uploads/videos') -> str:
+    def assemble_chunks(self, upload_id: str, filename: str, target_dir: str = 'uploads/videos') -> str:
         """
         Assemble uploaded chunks into a complete file
         
@@ -96,19 +96,24 @@ class ChunkedUploadManager:
 
             # Get chunk directory
             chunk_dir = os.path.join(self.base_upload_dir, upload_id)
-            
+
             # Verify all chunks are present
             chunks = sorted(
-                [f for f in os.listdir(chunk_dir) if f.startswith('chunk_')], 
+                [f for f in os.listdir(chunk_dir) if f.startswith('chunk_')],
                 key=lambda x: int(x.split('_')[1])
             )
 
             if not chunks:
                 raise ValueError("No chunks found for the given upload_id")
+            
+            # Check if any chunks are missing
+            expected_chunk_numbers = {int(chunk.split('_')[1]) for chunk in chunks}
+            if len(expected_chunk_numbers) != max(expected_chunk_numbers):
+                missing_chunks = set(range(1, max(expected_chunk_numbers) + 1)) - expected_chunk_numbers
+                raise ValueError(f"Missing chunks: {missing_chunks}")
 
             # Create output file path
-            output_filename = f'{upload_id}.mp4'
-            output_path = os.path.join(target_dir, output_filename)
+            output_path = os.path.join(target_dir, filename)
 
             # Assemble chunks
             with open(output_path, 'wb') as outfile:
@@ -121,9 +126,17 @@ class ChunkedUploadManager:
 
         except Exception as e:
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail=f"Chunk assembly failed: {str(e)}"
             )
+
+    def is_valid_filename(self, filename: str) -> bool:
+        """
+        Basic filename validation
+        """
+        if not filename or any(c in '\/:*?"<>|' for c in filename):
+            return False
+        return True
 
 def create_chunk_router() -> APIRouter:
     """
@@ -140,7 +153,8 @@ def create_chunk_router() -> APIRouter:
         file: UploadFile = File(...),
         chunk_number: int = Form(1),
         total_chunks: int = Form(1),
-        upload_id: Optional[str] = Form(None)
+        upload_id: Optional[str] = Form(None),
+        filename: str = Form(...)
     ):
         """
         Handle individual chunk uploads
@@ -150,12 +164,17 @@ def create_chunk_router() -> APIRouter:
             chunk_number (int): Current chunk number
             total_chunks (int): Total number of chunks
             upload_id (str, optional): Unique upload identifier
+            filename (str): Filename of the uploaded file
         
         Returns:
             JSONResponse: Upload status and metadata
         """
         # Generate upload ID if not provided
         upload_id = upload_id or str(uuid.uuid4())
+
+        # Validate filename
+        if not upload_manager.is_valid_filename(filename):
+            raise HTTPException(status_code=400, detail="Invalid filename")
 
         # Save the chunk
         result = await upload_manager.save_chunk(
@@ -164,7 +183,7 @@ def create_chunk_router() -> APIRouter:
 
         # If all chunks are uploaded, assemble the file
         if result['status'] == 'completed':
-            assembled_file_path = upload_manager.assemble_chunks(upload_id)
+            assembled_file_path = upload_manager.assemble_chunks(upload_id, filename)
             result['file_path'] = assembled_file_path
 
         return JSONResponse(content=result)

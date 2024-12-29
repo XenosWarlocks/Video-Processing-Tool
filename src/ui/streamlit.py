@@ -25,6 +25,10 @@ from src.ai_integration.gemini_processor import GeminiProcessor
 from chat_ui import ChatUI
 from src.api.vid_upload import VideoChunkUploader
 from src.payment.payment_processor import PaymentProcessor, PaymentConfig, PaymentUI
+from src.ui.components.theme import apply_theme
+from src.ui.components.buttons import primary_button, secondary_button
+from src.ui.components.cards import card
+from src.ui.components.inputs import styled_text_input
 
 # Set page config before any other Streamlit commands
 st.set_page_config(
@@ -57,7 +61,8 @@ class EnhancedStreamlitApp:
         self.payment_ui = PaymentUI(self.payment_processor)
         
         # self._setup_page_config()
-        self._apply_custom_styling()
+        apply_theme()  # Apply the custom theme
+        # self._apply_custom_styling()  # Remove or comment out the old styling
     
     # def _setup_page_config(self):
     #     """
@@ -171,6 +176,10 @@ class EnhancedStreamlitApp:
                     value="Medium"
                 )
                 st.caption("Higher levels provide more comprehensive analysis")
+
+            # Use the primary_button from components
+            if primary_button("Apply Settings", key="apply_settings"):
+                st.sidebar.success("Settings applied!")
     
     def process_video(self, uploaded_file):
         """
@@ -249,11 +258,14 @@ class EnhancedStreamlitApp:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("🕒 Processing Time", f"{results.get('processing_time', 0):.2f} sec")
+            #st.metric("🕒 Processing Time", f"{results.get('processing_time', 0):.2f} sec")
+            card("Processing Time", f"{results.get('processing_time', 0):.2f} sec", icon="⏱️")
         with col2:
-            st.metric("🖼️ Frames Analyzed", len(results.get('frames', [])))
+            # st.metric("🖼️ Frames Analyzed", len(results.get('frames', [])))
+            card("Frames Analyzed", str(len(results.get('frames', []))), icon="🖼️")
         with col3:
-            st.metric("📈 Complexity", results.get('detail_level', 'Medium'))
+            # st.metric("📈 Complexity", results.get('detail_level', 'Medium'))
+            card("Complexity", results.get('detail_level', 'Medium'), icon="📈")
         
         # Sentiment Distribution
         if self.sentiment_analysis:
@@ -330,8 +342,10 @@ class EnhancedStreamlitApp:
             st.markdown("### 💬 Chat with AI Assistant")
             self.chat_ui.render_chat_interface()
             
-            # Add clear chat button
-            if st.button("Clear Chat History", key="clear_chat"):
+            # # Add clear chat button
+            # if st.button("Clear Chat History", key="clear_chat"):
+            # Use the secondary_button from components
+            if secondary_button("Clear Chat History", key="clear_chat"):
                 self.chat_ui.clear_chat_history()
 
         

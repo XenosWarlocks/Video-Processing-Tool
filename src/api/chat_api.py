@@ -52,12 +52,13 @@ class ChatAPI:
             # Add message to history
             self.chat_history.append(current_message)
             
-            # Process the message through the AI processor
+            # Process the message through the AI processor, including full chat history for context
             response = self.processor.process([{
                 'text': message,
                 'role': role,
                 'video_context': video_context,
-                'metadata': metadata
+                'metadata': metadata,
+                'chat_history': self.get_chat_history(include_metadata=False)  # Add chat history for context
             }])
             
             # Extract response text from processed data
@@ -101,6 +102,8 @@ class ChatAPI:
                 for insight in item.get('insights', []):
                     if 'summary' in insight:
                         summaries.append(insight['summary'])
+                    elif 'error' in insight:
+                        summaries.append(f"Error in processing: {insight['error']}")
             
             # Combine summaries or return default message
             if summaries:

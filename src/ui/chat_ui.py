@@ -4,6 +4,7 @@ import streamlit as st
 from typing import List, Dict, Optional
 from datetime import datetime
 from src.api.chat_api import ChatAPI
+from src.ui.components.inputs import styled_text_input  # Import the styled input
 
 class ChatUI:
     def __init__(self):
@@ -91,26 +92,22 @@ class ChatUI:
             chat_input_container = st.container()
             
             with chat_input_container:
-                # Create two columns for input and button
-                col1, col2 = st.columns([5, 1])
-                
-                with col1:
-                    st.text_input(
-                        "Message AI Assistant",
-                        key="user_input",
-                        placeholder="Type your message here...",
-                        label_visibility="collapsed",
-                        disabled=st.session_state.processing_message,  # Disable while processing
-                        on_change=self.handle_user_input
-                    )
-                
-                with col2:
-                    st.button(
-                        "Send",
-                        use_container_width=True,
-                        disabled=st.session_state.processing_message,  # Disable while processing
-                        on_click=self.handle_user_input
-                    )
+                # Use the styled_text_input from components
+                styled_text_input(
+                    "Message AI Assistant",
+                    key="user_input",
+                    placeholder="Type your message here...",
+                    on_change=self.handle_user_input,
+                    disabled=st.session_state.processing_message,  # Disable while processing
+                )
+
+                # Use the primary_button from components (if needed)
+                if st.button(
+                    "Send",
+                    disabled=st.session_state.processing_message,
+                    on_click=self.handle_user_input
+                ):
+                    pass  # The on_click is handled by the styled_text_input's on_change
 
     def render_message(self, message: Dict):
         """
