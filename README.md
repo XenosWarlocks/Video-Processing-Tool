@@ -95,6 +95,9 @@ video-processing-tool/
 ├── setup.py
 └── README.md
 ```
+## Workflow
+
+![Diagram](assets/diagram.png)
 
 ## How It Works
 
